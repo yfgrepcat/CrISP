@@ -104,6 +104,8 @@ The DNS server is a BIND9 container connected to P2.
 It uses views:
 - enterprise clients get enterprise answers
 - residential clients get residential answers
+ 
+CAREFULL : Server IP and ACL are random to switch from a vue to another depending on the IP of the client.
 
 Useful IPs in this lab:
 - DNS mgmt IP: 172.20.20.30
