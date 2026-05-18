@@ -68,12 +68,6 @@ make down
 
 ContainerLab requires a Linux host — no prebuilt binary for macOS ARM64. Use `make up` on macOS for local development.
 
-### Install clab
-
-```bash
-bash -c "$(curl -sL https://get.containerlab.dev)"
-```
-
 ### Deploy
 
 ```bash
