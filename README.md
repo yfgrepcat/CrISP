@@ -126,7 +126,7 @@ sudo containerlab deploy --topo topology.clab.yaml
 Quick host check:
 
 ```bash
-dig @172.20.20.30 www.enterprise.local
+dig @172.20.20.30 www.enterprise.local 
 dig @172.20.20.30 voip.enterprise.local
 ```
 
@@ -169,5 +169,20 @@ named-checkconf /etc/bind/named.conf
 named-checkzone enterprise.local /etc/bind/zones/db.enterprise.local
 journalctl -u bind9
 ```
-
 More details are in dns/README.md.
+
+## [Monday, May 18] End-of-session summary
+
+Summary of what was done:
+
+- **Emilien:** OpenSense test failed because it runs in a VM and the version is incompatible. Router image tests: Cisco image not OK; succeeded in generating an Arista image. Next steps: rebuild the topology with a gateway for VPNs. Consider site-to-site VPN design for the next session.
+
+- **Corentin:** Interconnection with Cisco is working. Translate the configuration to Arista (use Emilien's image). Translation task to be completed next session.
+
+- **Stéphane:** Refactored the VoIP code; it's OK. ContainerLab deployment is working. Next time: fix traffic/flow issues observed in ContainerLab.
+
+- **Nikita:** Prepared Docker web service with two instances (same server). Next time: deploy the web instances in ContainerLab so they are ready to plug in.
+
+- **Pierre:** DNS integrated and merged into main. Next: test DNS behavior in real conditions across different networks and with other groups.
+
+- **Ismael:** DHCP integrated into the topology and functional when used directly by a client. Next time: investigate configuring DHCP relay.
