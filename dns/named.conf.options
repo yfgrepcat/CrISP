@@ -1,0 +1,13 @@
+acl "enterprise-nets" { 120.0.162.0/24; 120.0.163.0/24; };
+acl "residential-nets" { 120.0.164.0/24; 120.0.165.0/24; };
+acl "trusted" { enterprise-nets; residential-nets; };
+
+options {
+  directory "/var/cache/bind";
+  listen-on port 53 { any; };
+  listen-on-v6 { none; };
+  recursion yes;
+  allow-recursion { trusted; };
+  allow-query { any; };
+  dnssec-validation no;
+};
