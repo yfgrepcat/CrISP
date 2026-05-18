@@ -7,9 +7,9 @@ down:
 	docker compose down
 
 phone1:
-	docker exec -it voip-phone1 baresip -f /root/.baresip
+	docker attach --detach-keys="ctrl-c" voip-phone1
 
 phone2:
-	docker exec -it voip-phone2 baresip -f /root/.baresip
+	docker attach --detach-keys="ctrl-c" voip-phone2
 
 .PHONY: up down phone1 phone2

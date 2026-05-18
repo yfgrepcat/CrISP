@@ -26,7 +26,7 @@ Builds images and starts all 3 containers in the background.
 
 ## Make a call
 
-Open an interactive baresip session in each phone (two terminals):
+Both phones register automatically on `make up`. Attach to a phone's baresip console (two terminals):
 
 ```bash
 # Terminal 1
@@ -36,7 +36,9 @@ make phone1
 make phone2
 ```
 
-Inside baresip, wait for `<--- 200 OK` (registration confirmed), then dial from phone1:
+Detach without stopping: `Ctrl+C`
+
+Once attached, dial from phone1:
 
 ```
 /dial 1002

@@ -16,6 +16,8 @@ services:
   phone1:
     <<: *phone
     container_name: voip-phone1
+    stdin_open: true
+    tty: true
     environment:
       SIP_USER: "1001"
       SIP_SERVER: pbx
@@ -24,6 +26,8 @@ services:
   phone2:
     <<: *phone
     container_name: voip-phone2
+    stdin_open: true
+    tty: true
     environment:
       SIP_USER: "1002"
       SIP_SERVER: pbx
