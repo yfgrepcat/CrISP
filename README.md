@@ -1,5 +1,7 @@
 # Enterprise Network
 
+![Logo](img/logo.png)
+
 > Multi-site enterprise network project with internal routing, interconnection with other autonomous systems, and shared network services.
 
 ## Project Overview
