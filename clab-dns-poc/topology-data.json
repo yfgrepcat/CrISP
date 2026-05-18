@@ -1,0 +1,133 @@
+{
+  "name": "dns-poc",
+  "type": "clab",
+  "clab": {
+    "config": {
+      "prefix": "clab",
+      "mgmt": {
+        "network": "clab-mgmt",
+        "bridge": "br-29e37ad583cc",
+        "ipv4-subnet": "172.20.30.0/24",
+        "ipv4-gw": "172.20.30.1",
+        "external-access": true
+      }
+    }
+  },
+  "ssh-pub-keys": ["ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIA4KHR1QcsM1uN69hCJjzaw2GeYVWIS2jQi3JEHt3Iww"],
+  "nodes": {
+    "client": {
+      "index": "0",
+      "shortname": "client",
+      "longname": "clab-dns-poc-client",
+      "fqdn": "client.dns-poc.io",
+      "group": "",
+      "labdir": "/home/t70n/Documents/enterprise-network/clab-dns-poc/client",
+      "kind": "linux",
+      "image": "ghcr.io/nicolaka/netshoot:latest",
+      "mgmt-net": "",
+      "mgmt-intf": "",
+      "mgmt-ipv4-address": "172.20.30.11",
+      "mgmt-ipv4-prefix-length": 24,
+      "mgmt-ipv6-address": "",
+      "mgmt-ipv6-prefix-length": 0,
+      "mac-address": "",
+      "labels": {
+        "clab-git-branch": "dns",
+        "clab-git-hash": "6e9c3d6",
+        "clab-mgmt-net-bridge": "br-29e37ad583cc",
+        "clab-node-group": "",
+        "clab-node-kind": "linux",
+        "clab-node-lab-dir": "/home/t70n/Documents/enterprise-network/clab-dns-poc/client",
+        "clab-node-longname": "clab-dns-poc-client",
+        "clab-node-name": "client",
+        "clab-node-type": "",
+        "clab-owner": "t70n",
+        "clab-topo-file": "/home/t70n/Documents/enterprise-network/poc-dns.clab.yaml",
+        "containerlab": "dns-poc"
+      },
+      "port-bindings": [
+      ]
+    },
+    "dns": {
+      "index": "1",
+      "shortname": "dns",
+      "longname": "clab-dns-poc-dns",
+      "fqdn": "dns.dns-poc.io",
+      "group": "",
+      "labdir": "/home/t70n/Documents/enterprise-network/clab-dns-poc/dns",
+      "kind": "linux",
+      "image": "internetsystemsconsortium/bind9:9.21",
+      "mgmt-net": "",
+      "mgmt-intf": "",
+      "mgmt-ipv4-address": "172.20.30.10",
+      "mgmt-ipv4-prefix-length": 24,
+      "mgmt-ipv6-address": "",
+      "mgmt-ipv6-prefix-length": 0,
+      "mac-address": "",
+      "labels": {
+        "clab-git-branch": "dns",
+        "clab-git-hash": "6e9c3d6",
+        "clab-mgmt-net-bridge": "br-29e37ad583cc",
+        "clab-node-group": "",
+        "clab-node-kind": "linux",
+        "clab-node-lab-dir": "/home/t70n/Documents/enterprise-network/clab-dns-poc/dns",
+        "clab-node-longname": "clab-dns-poc-dns",
+        "clab-node-name": "dns",
+        "clab-node-type": "",
+        "clab-owner": "t70n",
+        "clab-topo-file": "/home/t70n/Documents/enterprise-network/poc-dns.clab.yaml",
+        "containerlab": "dns-poc"
+      },
+      "port-bindings": [
+        {
+          "host-ip": "",
+          "host-port": 0,
+          "port": 953,
+          "protocol": "tcp"
+        },
+        {
+          "host-ip": "",
+          "host-port": 0,
+          "port": 443,
+          "protocol": "tcp"
+        },
+        {
+          "host-ip": "",
+          "host-port": 0,
+          "port": 53,
+          "protocol": "tcp"
+        },
+        {
+          "host-ip": "",
+          "host-port": 0,
+          "port": 53,
+          "protocol": "udp"
+        },
+        {
+          "host-ip": "",
+          "host-port": 0,
+          "port": 853,
+          "protocol": "tcp"
+        }
+      ]
+    }
+  },
+  "links": [
+    {
+      "endpoints": {
+        "a": {
+          "node": "dns",
+          "interface": "eth1",
+          "mac": "aa:c1:ab:1b:8b:3b",
+          "peer": "z"
+        },
+        "z": {
+          "node": "client",
+          "interface": "eth1",
+          "mac": "aa:c1:ab:5d:94:ad",
+          "peer": "a"
+        }
+      }
+    }
+  ]
+}

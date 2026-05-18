@@ -1,0 +1,20 @@
+# Snippet to add a DNS server node to your existing topology.clab.yaml.
+# Paste the `dns-as12` node under `topology.nodes:` and add the link(s) under `topology.links:`.
+
+  dns-as12:
+    kind: linux
+    image: internetsystemsconsortium/bind9:9.16
+    mgmt-ipv4: 172.20.20.30
+    group: services
+    # mount the local dns folder into /etc/bind inside the container
+    volumes:
+      - ./dns:/etc/bind
+
+# Example links to attach DNS to existing host bridges so it can serve enterprise and residential
+  topology_links_dns_snippet:
+    - endpoints: ["dns-as12:eth1", "net-site:dns-port"]
+    - endpoints: ["dns-as12:eth2", "net-nomad:dns-port"]
+
+# Notes:
+# - Replace `net-site` / `net-nomad` with the host-bridge names you want DNS attached to.
+# - Ensure the bridge endpoints (`dns-port`) are not already used; names are arbitrary labels.

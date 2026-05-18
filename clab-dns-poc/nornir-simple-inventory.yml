@@ -1,0 +1,11 @@
+---
+client:
+    username: 
+    password: 
+    platform: linux
+    hostname: 172.20.30.11
+dns:
+    username: 
+    password: 
+    platform: linux
+    hostname: 172.20.30.10

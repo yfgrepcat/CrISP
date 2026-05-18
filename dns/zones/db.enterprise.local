@@ -1,0 +1,13 @@
+$TTL 3600
+@ IN SOA ns.enterprise.local. admin.enterprise.local. (
+    2026051001
+    7200
+    1800
+    604800
+    3600
+)
+
+@       IN NS    ns.enterprise.local.
+ns      IN A     ID_DNS_AS12_IP
+www     IN A     ID_WEB_SERVER_IP
+voip    IN A     ID_VOIP_SERVER_IP

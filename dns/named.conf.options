@@ -1,0 +1,13 @@
+acl "enterprise-nets" { ID_ENTERPRISE_RANGE; ID_ENTERPRISE_RANGE_2; };
+acl "residential-nets" { ID_CLIENT1_RANGE; ID_CLIENT2_RANGE; };
+acl "trusted" { enterprise-nets; residential-nets; };
+
+options {
+  directory "/var/cache/bind";
+  listen-on port 53 { any; };
+  listen-on-v6 { none; };
+  recursion yes;
+  allow-recursion { trusted; };
+  allow-query { any; };
+  dnssec-validation no;
+};

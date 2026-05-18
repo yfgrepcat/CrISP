@@ -1,0 +1,29 @@
+name: dns-poc
+
+mgmt:
+  network: clab-mgmt
+  ipv4-subnet: 172.20.30.0/24
+
+topology:
+  nodes:
+    dns:
+      kind: linux
+      image: internetsystemsconsortium/bind9:9.21
+      mgmt-ipv4: 172.20.30.10
+      binds:
+        - ./poc-dns/dns:/etc/bind
+      exec:
+        - ip link set eth1 up
+        - ip addr add 172.16.10.53/24 dev eth1
+
+    client:
+      kind: linux
+      image: ghcr.io/nicolaka/netshoot:latest
+      mgmt-ipv4: 172.20.30.11
+      exec:
+        - ip link set eth1 up
+        - ip addr add 172.16.10.10/24 dev eth1
+        - sh -lc 'printf "%s\n" "nameserver 172.16.10.53" > /etc/resolv.conf'
+
+  links:
+    - endpoints: ["dns:eth1", "client:eth1"]
