@@ -66,21 +66,26 @@ make down
 
 ## ContainerLab (Linux only)
 
-ContainerLab requires a Linux host — no prebuilt binary for macOS ARM64. Use `make up` on macOS for local development.
+VoIP nodes (`pbx`, `phone-site`, `phone-nomad`) are integrated into the main enterprise topology at the repo root. ContainerLab requires a Linux host — no prebuilt binary for macOS ARM64.
 
-### Deploy
+### Build images then deploy
 
 ```bash
-make deploy       # builds images then runs: clab deploy -t topology.clab.yml
+# from voip-lab/
+make build                          # build Docker images
+clab deploy -t ../topology.clab.yaml
 ```
 
-Container names are prefixed by clab: `clab-voip-pbx`, `clab-voip-phone1`, `clab-voip-phone2`.
+Container names: `clab-enterprise-ospf-bgp-<node>`
+- `clab-enterprise-ospf-bgp-pbx`
+- `clab-enterprise-ospf-bgp-phone-site`   (ext. 1001 — intranet via PE-site)
+- `clab-enterprise-ospf-bgp-phone-nomad`  (ext. 1002 — external via PE-nomad)
 
 ### Attach to a phone
 
 ```bash
-make clab-phone1  # docker attach clab-voip-phone1
-make clab-phone2  # docker attach clab-voip-phone2
+make clab-phone1   # phone-site
+make clab-phone2   # phone-nomad
 ```
 
 Same baresip commands apply (`/dial 1002`, `/accept`, `/hangup`). Detach: `Ctrl+C`.
@@ -88,7 +93,7 @@ Same baresip commands apply (`/dial 1002`, `/accept`, `/hangup`). Detach: `Ctrl+
 ### Teardown
 
 ```bash
-make destroy      # removes containers and clab-managed network interfaces
+clab destroy -t ../topology.clab.yaml
 ```
 
 ---
