@@ -8,5 +8,6 @@ $TTL 3600
 )
 
 @       IN NS    ns.enterprise.local.
-ns      IN A     ID_DNS_AS12_IP
-www     IN A     ID_WEB_SERVER_PUBLIC_IP
+ns      IN A     120.0.34.7
+www     IN A     120.0.35.12
+voip    IN A     120.0.35.13

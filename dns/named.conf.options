@@ -1,5 +1,5 @@
-acl "enterprise-nets" { ID_ENTERPRISE_RANGE; ID_ENTERPRISE_RANGE_2; };
-acl "residential-nets" { ID_CLIENT1_RANGE; ID_CLIENT2_RANGE; };
+acl "enterprise-nets" { 120.0.162.0/24; 120.0.163.0/24; };
+acl "residential-nets" { 120.0.164.0/24; 120.0.165.0/24; };
 acl "trusted" { enterprise-nets; residential-nets; };
 
 options {
