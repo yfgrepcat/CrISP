@@ -64,6 +64,41 @@ Type `/quit` to exit the baresip shell without stopping the container.
 make down
 ```
 
+## ContainerLab (Linux only)
+
+ContainerLab requires a Linux host — no prebuilt binary for macOS ARM64. Use `make up` on macOS for local development.
+
+### Install clab
+
+```bash
+bash -c "$(curl -sL https://get.containerlab.dev)"
+```
+
+### Deploy
+
+```bash
+make deploy       # builds images then runs: clab deploy -t topology.clab.yml
+```
+
+Container names are prefixed by clab: `clab-voip-pbx`, `clab-voip-phone1`, `clab-voip-phone2`.
+
+### Attach to a phone
+
+```bash
+make clab-phone1  # docker attach clab-voip-phone1
+make clab-phone2  # docker attach clab-voip-phone2
+```
+
+Same baresip commands apply (`/dial 1002`, `/accept`, `/hangup`). Detach: `Ctrl+C`.
+
+### Teardown
+
+```bash
+make destroy      # removes containers and clab-managed network interfaces
+```
+
+---
+
 ## Troubleshooting
 
 **Registration fails** — check PBX is up: `docker logs voip-pbx`
