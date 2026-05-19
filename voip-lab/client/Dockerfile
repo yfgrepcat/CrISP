@@ -7,7 +7,7 @@ RUN apt-get update && \
     apt-get install -y --no-install-recommends software-properties-common && \
     add-apt-repository universe && \
     apt-get update && \
-    apt-get install -y --no-install-recommends baresip && \
+    apt-get install -y --no-install-recommends baresip iproute2 iputils-ping && \
     rm -rf /var/lib/apt/lists/*
 
 COPY entrypoint.sh /entrypoint.sh
