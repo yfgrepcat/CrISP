@@ -1,5 +1,3 @@
-export PATH := /opt/homebrew/bin:$(PATH)
-
 # --- Docker Compose ---
 up:
 	docker compose up -d --build
