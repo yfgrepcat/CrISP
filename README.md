@@ -132,6 +132,23 @@ If the lab was still present before redeploying, clean it first:
 ```bash
 sudo containerlab destroy --topo topology.clab.yaml --cleanup
 ```
+## OpenVPN nomad-CPE → HQ (over the public side)
+
+The nomad side models a pre-configured CPE that the user plugs into a home
+internet box. It dials into the HQ concentrator over the simulated public
+Internet — the enterprise IGP does **not** carry the nomad network.
+
+- `ovpn-nomad` (the CPE) sits behind `home-ce` on `net-home` (192.168.1.10/24,
+  default via 192.168.1.1).
+- `home-ce` does MASQUERADE from `net-home` to `net-isp` (WAN 203.0.113.20/24).
+- `PE-isp` exposes `203.0.113.1/24` on `net-isp` (kept **out of OSPF** — the
+  public side is opaque to the enterprise).
+- `ovpn-site` (HQ concentrator) is dual-homed: `eth1` on `net-site`
+  (10.12.20.2/24, inside the AS) and `eth2` on `net-isp` (203.0.113.50/24,
+  DMZ leg where it listens on UDP/1194).
+- Tunnel inner: `10.255.255.0/30` (nomad .1, HQ .2). `PE-site` has a static
+  for that subnet via `ovpn-site` so HQ hosts can reach the CPE.
+
 
 ## DNS notes (how it works + tests)
 
@@ -202,7 +219,8 @@ named-checkconf /etc/bind/named.conf
 named-checkzone enterprise.local /etc/bind/zones/db.enterprise.local
 journalctl -u bind9
 ```
-More details are in dns/README.md.
+
+More details located under dns/README.md.
 
 ## [Monday, May 18] End-of-session summary
 
