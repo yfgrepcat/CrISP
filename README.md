@@ -1,352 +1,153 @@
 # Enterprise Network
 
-![Logo](img/logo.png)
-
-> Multi-site enterprise network project with internal routing, interconnection with other autonomous systems, and shared network services.
-
-## Project Overview
-
-This project focuses on building a multi-site enterprise network and setting up an autonomous system that can interconnect with the other ASes used by the class.
-
-### Team Members
-
-| Name |
-| --- |
-| Yoann François |
-| Corentin Pradier |
-| Emilien Fieu |
-| Thomas Silvestre |
-| Nikita Ziuzin |
-| Stéphane Loppinet |
-| Ismail Al Riyami |
-| Pierre Chaveroux |
-
-### Scope
-
-| Area | Requirements |
-| --- | --- |
-| Our AS | Provide Internet access service to individual users (internal and external). |
-| Our AS | Offer a zero-configuration interconnection solution for residential clients. |
-| Our AS | Internal residential users are our responsibility; client management is handled by the group. |
-| Our AS | Residential users (internal or external) must access the network through a consumer gateway (box). |
-| Our AS | The internal user is number 2 |
-| External AS | The external user is number (2+2)%4 = 0+1, , i.e., AS11 |
-| Our AS | Through their gateway, residential users must be able to automatically access the enterprise network. |
-| Our AS | Provide Internet access service to the enterprise network (internal and external). |
-| Our AS | The internal company AS number is G2+10 (AS12). |
-| Our AS | The external company is managed by Group 3: Sarah, Denisa, Tess, Simon, Nils, Mina, Alex, Louis, and Pierre-François. |
-| Our AS | The connection provided to the company must allow access to both sites: intra-AS12 and external AS13. |
-| Our AS | Use OSPF as the dynamic routing protocol within the AS. |
-| Our AS | Our AS12 IP range is 120.0.162.0/20. |
-| Enterprise site | Implement network services and dynamic addressing (DHCP). |
-| Enterprise site | Implement internal network access security. |
-| Enterprise site | Implement user management. |
-| Enterprise site | Deploy the enterprise DNS service. |
-| Enterprise site | Deploy the VoIP service. |
-| Enterprise site | Deploy the company's web service. |
-| Enterprise site | Set up a VPN between the two company sites. |
-| Enterprise site | Set up a VPN between the companies and residential users. |
-
-## Project Tracking
-
-### Enterprise Site Tasks
-
-| Task | Status | Completion date |
-| --- | --- | --- |
-| Network services and dynamic addressing | KO | - |
-| Internal network access security | KO | - |
-| User management | KO | - |
-| Enterprise DNS | KO | - |
-| VoIP service | KO | - |
-| Enterprise web service | KO | - |
-| VPN between company sites | KO | - |
-| VPN between company and residential users | KO | - |
-
-### Work Packages
-
-| Team | Members | Iteration Number | Focus | Status |
-| --- | --- | --- | --- | --- |
-| Team 1 | Ismail & Pierre | 1 | DNS and DHCP setup in the AS | KO |
-| Team 2 | Nikita & Stéphane | 1 | VoIP and web Docker setup inside the enterprise | KO |
-| Team 3 | Corentin & Emilien | 1 | eBGP interconnection and VPN | KO |
-| Team 4 | Yoann & Thomas | 1 |  Internal AS routing | KO |
-
-## Deployment Procedure
-
-1. Clone the repository and move into the project directory.
-
-   ```bash
-   git clone https://github.com/yfgrepcat/enterprise-network.git
-   cd enterprise-network
-   ```
-
-2. Optional: install the Containerlab VS Code extension if you want easier lab management.
-
-   See the official guide: https://containerlab.dev/manual/vsc-extension/
-
-3. Deploy the lab environment with Containerlab.
-
-   Use the CLI if Containerlab is already installed on your system:
-
-   ```bash
-   sudo containerlab deploy --topo topology.clab.yaml
-   ```
-
-   > Note: `sudo` may be disabled in recent Containerlab setups. If that happens, add your user to the `docker` and `clab_admins` groups so you can run Containerlab without `sudo`.
-
-   Or deploy it from VS Code:
-
-   - Open the Containerlab extension in the VS Code sidebar.
-   - Select the `clab-topology.yaml` topology file.
-   - Click `Deploy Lab` to start the environment.
-
-## Quick Restart After Reboot
-
-If you reboot the PC, run these commands from the repository root to recreate the host bridges, rebuild the VoIP images, and redeploy the lab.
-
-If the lab was still present before redeploying, clean it first:
+## First launch
 
 ```bash
-sudo containerlab destroy --topo topology.clab.yaml --cleanup
-```
+chmod +x set_bridges
+./set_bridges
 
-### 1) Recreate the host bridges required by the topology
-
-```bash
-If you reboot the PC, run these commands from the repository root to recreate the host bridges, build the VoIP images, and redeploy the lab.
-
-```bash
-# 1) Recreate the host bridges required by the topology
-sudo ip link add name net-isp type bridge 2>/dev/null || true
-sudo ip link set net-isp up
-
-sudo ip link add name net-nomad type bridge 2>/dev/null || true
-sudo ip link set net-nomad up
-
-sudo ip link add name net-site type bridge 2>/dev/null || true
-sudo ip link set net-site up
-```
-
-### 2) Build the local images used by Containerlab
-
-```bash
 docker build -t reverse-proxy:latest ./reverse-proxy
 docker build -t web:latest ./web
 
 cd voip-lab
 make build
 cd ..
+
+sudo containerlab destroy --topo topology.clab.yaml --cleanup
+sudo containerlab deploy --topo topology.clab.yaml
 ```
 
-### 3) Redeploy the lab
+## Restart after a reboot
 
 ```bash
+./set_bridges
+sudo containerlab destroy --topo topology.clab.yaml --cleanup
 sudo containerlab deploy --topo topology.clab.yaml
 ```
 
-sudo ip link add name svc-net type bridge 2>/dev/null || true
-sudo ip link set svc-net up
+## DHCP service
 
-# 2) Build the local VoIP images used by Containerlab
-cd voip-lab
-make build
-cd ..
+The central DHCP server runs in `clab-enterprise-ospf-bgp-dhcp` and serves the local pool plus the relayed enterprise and private ranges.
 
-# 3) Redeploy the lab
-sudo containerlab deploy --topo topology.clab.yaml
-```
-
-If the lab was still present before redeploying, clean it first:
+Rebuild the lab from scratch when you want to validate DHCP end to end:
 
 ```bash
 sudo containerlab destroy --topo topology.clab.yaml --cleanup
-```
-## OpenVPN nomad-CPE → HQ (over the public side)
-
-The nomad side models a pre-configured CPE that the user plugs into a home
-internet box. It dials into the HQ concentrator over the simulated public
-Internet — the enterprise IGP does **not** carry the nomad network.
-
-- `ovpn-nomad` (the CPE) sits behind `home-ce` on `net-home` (192.168.1.10/24,
-  default via 192.168.1.1).
-- `home-ce` does MASQUERADE from `net-home` to `net-isp` (WAN 203.0.113.20/24).
-- `PE-isp` exposes `203.0.113.1/24` on `net-isp` (kept **out of OSPF** — the
-  public side is opaque to the enterprise).
-- `ovpn-site` (HQ concentrator) is dual-homed: `eth1` on `net-site`
-  (10.12.20.2/24, inside the AS) and `eth2` on `net-isp` (203.0.113.50/24,
-  DMZ leg where it listens on UDP/1194).
-- Tunnel inner: `10.255.255.0/30` (nomad .1, HQ .2). `PE-site` has a static
-  for that subnet via `ovpn-site` so HQ hosts can reach the CPE.
-
-
-## DNS notes (how it works + tests)
-
-The DNS server is a BIND9 container connected to P2.
-It uses views:
-- enterprise clients get enterprise answers
-- residential clients get residential answers
- 
-CAREFULL : Server IP and ACL are random to switch from a vue to another depending on the IP of the client.
-
-Useful IPs in this lab:
-- DNS mgmt IP: 172.20.20.30
-- DNS service IP: 120.0.34.7
-- www (enterprise): 120.0.35.11
-- www (residential/public): 120.0.35.12
-- voip: 120.0.35.13
-- reverse proxy / web DNS: corentinpradier.com -> 172.20.20.34
-
-Realistic web test from a client container:
-
-```bash
-docker exec clab-enterprise-ospf-bgp-phone-site python3 -c 'import socket; print(socket.gethostbyname("corentinpradier.com"))'
-docker exec clab-enterprise-ospf-bgp-phone-nomad python3 -c 'import socket; print(socket.gethostbyname("corentinpradier.com"))'
-
-docker exec clab-enterprise-ospf-bgp-phone-site python3 -c 'import urllib.request; print(urllib.request.urlopen("http://corentinpradier.com", timeout=5).read(200).decode())'
-docker exec clab-enterprise-ospf-bgp-phone-site python3 -c 'import urllib.request; print(urllib.request.urlopen("http://intranet.corentinpradier.com", timeout=5).read(200).decode())'
-```
-
-Expected:
-- `corentinpradier.com` resolves to `172.20.20.34`
-- the HTTP response returns the public web page and the intranet page from the reverse proxy
-
-Quick run from repo root:
-
-```bash
-sudo containerlab destroy --topo topology.clab.yaml
 sudo containerlab deploy --topo topology.clab.yaml
 ```
 
-Quick host check:
+Confirm the DHCP server container is running and has leases:
 
 ```bash
-dig @172.20.20.30 www.enterprise.local 
-dig @172.20.20.30 voip.enterprise.local
-dig @172.20.20.30 corentinpradier.com
+docker ps --format '{{.Names}}' | grep '^clab-enterprise-ospf-bgp-dhcp$'
 ```
 
-View test (enterprise vs residential):
-
 ```bash
-# add temporary source IPs inside DNS container
-docker exec clab-enterprise-ospf-bgp-dns-as12 ip link add ent0 type dummy
-docker exec clab-enterprise-ospf-bgp-dns-as12 ip addr add 120.0.162.10/24 dev ent0
-docker exec clab-enterprise-ospf-bgp-dns-as12 ip link set ent0 up
-
-docker exec clab-enterprise-ospf-bgp-dns-as12 ip link add res0 type dummy
-docker exec clab-enterprise-ospf-bgp-dns-as12 ip addr add 120.0.164.10/24 dev res0
-docker exec clab-enterprise-ospf-bgp-dns-as12 ip link set res0 up
-
-# enterprise source
-docker exec clab-enterprise-ospf-bgp-dns-as12 dig -b 120.0.162.10 @120.0.34.7 www.enterprise.local +short
-
-# residential source
-docker exec clab-enterprise-ospf-bgp-dns-as12 dig -b 120.0.164.10 @120.0.34.7 www.enterprise.local +short
+docker exec clab-enterprise-ospf-bgp-dhcp cat /var/lib/misc/dnsmasq.leases
 ```
 
-Expected:
-- enterprise source returns 120.0.35.11
-- residential source returns 120.0.35.12
-
-Cleanup after test:
-
 ```bash
-docker exec clab-enterprise-ospf-bgp-dns-as12 ip link del ent0
-docker exec clab-enterprise-ospf-bgp-dns-as12 ip link del res0
+docker exec clab-enterprise-ospf-bgp-dhcp ps aux | grep dnsmasq
 ```
 
-Debug commands if needed:
-
 ```bash
-docker ps --filter "name=dns-as12" --format "{{.Names}}"
-docker exec -it $(docker ps --filter "name=dns-as12" -q) bash
-named-checkconf /etc/bind/named.conf
-named-checkzone enterprise.local /etc/bind/zones/db.enterprise.local
-journalctl -u bind9
+docker logs clab-enterprise-ospf-bgp-dhcp | tail -n 50
 ```
 
-More details located under dns/README.md.
-
-## [Monday, May 18] End-of-session summary
-
-Summary of what was done:
-
-- **Emilien:** OpenSense test failed because it runs in a VM and the version is incompatible. Router image tests: Cisco image not OK; succeeded in generating an Arista image. Next steps: rebuild the topology with a gateway for VPNs. Consider site-to-site VPN design for the next session.
-
-- **Corentin:** Interconnection with Cisco is working. Translate the configuration to Arista (use Emilien's image). Translation task to be completed next session.
-
-- **Stéphane:** Refactored the VoIP code; it's OK. ContainerLab deployment is working. Next time: fix traffic/flow issues observed in ContainerLab.
-
-- **Nikita:** Prepared Docker web service with two instances (same server). Next time: deploy the web instances in ContainerLab so they are ready to plug in.
-
-- **Pierre:** DNS integrated and merged into main. Next: test DNS behavior in real conditions across different networks and with other groups.
-
-- **Ismail:** DHCP integrated into the topology and functional when used directly by a client. Next time: investigate configuring DHCP relay.
-
-## DHCP notes (how it works + tests)
-
-Central DHCP: `clab-enterprise-ospf-bgp-dhcp` (120.0.36.10) runs `dnsmasq`. It serves the local pool and relayed subnets (via `giaddr`). Residential boxes bootstrap WAN via DHCP and run local `dnsmasq` for LAN clients.
-
-Quick check: `docker exec clab-enterprise-ospf-bgp-dhcp cat /var/lib/misc/dnsmasq.leases`
-
-If relayed clients fail, ensure routers forward DHCP (set `giaddr`).
-
-### How to test
-
-1. Rebuild the lab from scratch.
-
-   ```bash
-   sudo containerlab destroy --topo topology.clab.yaml
-   sudo containerlab deploy --topo topology.clab.yaml
-   ```
-
-2. Confirm the lab no longer contains `TESTCLIENT`.
-
-   ```bash
-   docker ps --format '{{.Names}}' | grep -E 'TESTCLIENT|SITE-CLIENT|NOMAD-CLIENT|RESIDENTIAL-BOX|dhcp'
-   ```
-
-3. Check that the relay clients obtain addresses.
-
-   ```bash
-   docker exec clab-enterprise-ospf-bgp-SITE-CLIENT ip addr show eth1
-   docker exec clab-enterprise-ospf-bgp-SITE-CLIENT ip route
-   docker exec clab-enterprise-ospf-bgp-NOMAD-CLIENT ip addr show eth1
-   docker exec clab-enterprise-ospf-bgp-NOMAD-CLIENT ip route
-   ```
-
-4. Verify the DHCP service container is running and listening on the service network.
-
-   ```bash
-   docker ps --format '{{.Names}}' | grep '^clab-enterprise-ospf-bgp-dhcp$'
-   # check dnsmasq process inside the container
-   docker exec clab-enterprise-ospf-bgp-dhcp ps aux | grep dnsmasq
-   # view recent logs to confirm sockets/leases
-   docker logs clab-enterprise-ospf-bgp-dhcp | tail -n 50
-   ```
-
-5. If the residential path is part of the scenario, confirm the box bootstraps correctly and the downstream client gets a lease.
-
-   ```bash
-   docker exec clab-enterprise-ospf-bgp-RESIDENTIAL-BOX ip addr show eth1
-   docker exec clab-enterprise-ospf-bgp-RESIDENTIAL-BOX ip addr show eth2
-   docker exec clab-enterprise-ospf-bgp-RESIDENTIAL-BOX ip route
-   docker exec clab-enterprise-ospf-bgp-NOMAD-CLIENT ping -c 3 120.0.36.10
-   ```
-
-### Residential box notes
-
-`RESIDENTIAL-BOX` is a simple consumer gateway: WAN via DHCP (e.g. 120.0.38.120 on `eth1`), LAN `192.168.1.1/24` on `eth2` with `dnsmasq`, and NAT enabled (`/proc/sys/net/ipv4/ip_forward = 1` and `iptables -t nat -A POSTROUTING -o eth1 -j MASQUERADE`).
-
-Inspect leases:
+Check that the relay clients obtained addresses and routes:
 
 ```bash
-docker exec clab-enterprise-ospf-bgp-dhcp grep 192.168.1.168 /var/lib/misc/dnsmasq.leases || true
-docker exec clab-enterprise-ospf-bgp-RESIDENTIAL-BOX grep 192.168.1.168 /var/lib/misc/dnsmasq.leases || true
+docker exec clab-enterprise-ospf-bgp-SITE-CLIENT ip addr show eth1
 ```
 
-Trace DHCP (if `tcpdump` present):
+```bash
+docker exec clab-enterprise-ospf-bgp-SITE-CLIENT ip route
+```
 
 ```bash
-docker exec -it clab-enterprise-ospf-bgp-dhcp tcpdump -ni eth1 -s 0 -vv udp port 67 or udp port 68
+docker exec clab-enterprise-ospf-bgp-NOMAD-CLIENT ip addr show eth1
+```
+
+```bash
+docker exec clab-enterprise-ospf-bgp-NOMAD-CLIENT ip route
+```
+
+If you want to validate the residential path too, confirm the gateway and downstream client:
+
+```bash
+docker exec clab-enterprise-ospf-bgp-RESIDENTIAL-BOX ip addr show eth1
+```
+
+```bash
+docker exec clab-enterprise-ospf-bgp-RESIDENTIAL-BOX ip addr show eth2
+```
+
+```bash
+docker exec clab-enterprise-ospf-bgp-RESIDENTIAL-BOX ip route
+```
+
+```bash
+docker exec clab-enterprise-ospf-bgp-NOMAD-CLIENT ping -c 3 120.0.36.10
+```
+
+## Web service
+
+### Public website
+
+The public site must work by IP and by DNS for everyone.
+
+```bash
+docker exec clab-enterprise-ospf-bgp-test-site sh -lc 'wget -qO- http://172.20.20.34 | grep -m1 "Page web des fans de Corentin Pradier"'
+```
+
+```bash
+docker exec clab-enterprise-ospf-bgp-test-site sh -lc 'nslookup extranet.corentinpradier.com 172.20.20.30'
+```
+
+```bash
+docker exec clab-enterprise-ospf-bgp-test-site sh -lc 'wget -qO- --header="Host: extranet.corentinpradier.com" http://172.20.20.34 | grep -m1 "Page web des fans de Corentin Pradier"'
+```
+
+### Intranet website
+
+The intranet site must be reachable only from the DHCP lease ranges that belong to `enterprise` and `private` clients.
+
+```bash
+docker exec clab-enterprise-ospf-bgp-SITE-CLIENT sh -lc 'nslookup intranet.corentinpradier.com 172.20.20.30'
+```
+
+```bash
+docker exec clab-enterprise-ospf-bgp-SITE-CLIENT sh -lc 'wget -qO- --header="Host: intranet.corentinpradier.com" http://172.20.20.34 | grep -m1 "Connexion Intranet"'
+```
+
+## VoIP smoke test
+
+Once the lab is up, open the two softphones in separate terminals:
+
+```bash
+cd voip-lab
+make phone-site
+```
+
+```bash
+cd voip-lab
+make phone-nomad
+```
+
+From `phone-site`, place the call:
+
+```text
+/dial 1002
+```
+
+In `phone-nomad`, answer it:
+
+```text
+/accept
+```
+
+To end the call:
+
+```text
+/hangup
 ```
