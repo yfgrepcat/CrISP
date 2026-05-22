@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Intranet - Corentin Pradier</title>
+</head>
+<body>
+    <div id="login-container">
+        <div id="login-form">
+            <h2>Connexion Intranet</h2>
+            <input type="text" id="username" placeholder="Nom d'utilisateur">
+            <input type="password" id="password" placeholder="Mot de passe">
+            <button onclick="login()">Se connecter</button>
+            <p id="error-message" style="color: red;"></p>
+        </div>
+    </div>
+
+    <div id="main-content" style="display: none">
+        <h1>Page web des fans internes de Corentin Pradier, également connu sous le nom cocoaligot12 (12 comme l'aveyron)</h1>
+        <img src="./images/corentinpradier.png">
+    </div>
+
+    <script>
+        function login() {
+            const user = document.getElementById('username').value;
+            const pass = document.getElementById('password').value;
+
+            // Oui oui la cybersécurité
+            if (user === 'coco' && pass === 'aligot12') {
+                document.getElementById('login-container').style.display = 'none';
+                document.getElementById('main-content').style.display = 'block';
+            } else {
+                document.getElementById('error-message').innerText = 'Identifiants incorrects.';
+            }
+        }
+    </script>
+</body>
+</html>

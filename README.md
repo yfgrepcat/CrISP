@@ -102,6 +102,17 @@ This project focuses on building a multi-site enterprise network and setting up 
 
 ## Quick Restart After Reboot
 
+If you reboot the PC, run these commands from the repository root to recreate the host bridges, rebuild the VoIP images, and redeploy the lab.
+
+If the lab was still present before redeploying, clean it first:
+
+```bash
+sudo containerlab destroy --topo topology.clab.yaml --cleanup
+```
+
+### 1) Recreate the host bridges required by the topology
+
+```bash
 If you reboot the PC, run these commands from the repository root to recreate the host bridges, build the VoIP images, and redeploy the lab.
 
 ```bash
@@ -114,6 +125,24 @@ sudo ip link set net-nomad up
 
 sudo ip link add name net-site type bridge 2>/dev/null || true
 sudo ip link set net-site up
+```
+
+### 2) Build the local images used by Containerlab
+
+```bash
+docker build -t reverse-proxy:latest ./reverse-proxy
+docker build -t web:latest ./web
+
+cd voip-lab
+make build
+cd ..
+```
+
+### 3) Redeploy the lab
+
+```bash
+sudo containerlab deploy --topo topology.clab.yaml
+```
 
 sudo ip link add name svc-net type bridge 2>/dev/null || true
 sudo ip link set svc-net up
@@ -165,6 +194,21 @@ Useful IPs in this lab:
 - www (enterprise): 120.0.35.11
 - www (residential/public): 120.0.35.12
 - voip: 120.0.35.13
+- reverse proxy / web DNS: corentinpradier.com -> 172.20.20.34
+
+Realistic web test from a client container:
+
+```bash
+docker exec clab-enterprise-ospf-bgp-phone-site python3 -c 'import socket; print(socket.gethostbyname("corentinpradier.com"))'
+docker exec clab-enterprise-ospf-bgp-phone-nomad python3 -c 'import socket; print(socket.gethostbyname("corentinpradier.com"))'
+
+docker exec clab-enterprise-ospf-bgp-phone-site python3 -c 'import urllib.request; print(urllib.request.urlopen("http://corentinpradier.com", timeout=5).read(200).decode())'
+docker exec clab-enterprise-ospf-bgp-phone-site python3 -c 'import urllib.request; print(urllib.request.urlopen("http://intranet.corentinpradier.com", timeout=5).read(200).decode())'
+```
+
+Expected:
+- `corentinpradier.com` resolves to `172.20.20.34`
+- the HTTP response returns the public web page and the intranet page from the reverse proxy
 
 Quick run from repo root:
 
@@ -178,6 +222,7 @@ Quick host check:
 ```bash
 dig @172.20.20.30 www.enterprise.local 
 dig @172.20.20.30 voip.enterprise.local
+dig @172.20.20.30 corentinpradier.com
 ```
 
 View test (enterprise vs residential):

@@ -1,9 +1,12 @@
 #!/bin/sh
 mkdir -p /root/.baresip
 
-# Wait for eth1 to be configured by containerlab exec commands
+# Wait for the service interface to be configured by containerlab exec commands
 sleep 2
 SIP_LOCAL=$(ip -4 addr show eth1 2>/dev/null | awk '/inet /{split($2,a,"/"); print a[1]; exit}')
+if [ -z "$SIP_LOCAL" ]; then
+	SIP_LOCAL=$(ip -4 addr show eth0 2>/dev/null | awk '/inet /{split($2,a,"/"); print a[1]; exit}')
+fi
 : "${SIP_LOCAL:=0.0.0.0}"
 
 cat > /root/.baresip/accounts << EOF
