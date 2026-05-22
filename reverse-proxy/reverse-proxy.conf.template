@@ -17,6 +17,7 @@ server {
 
     allow ${NOMAD_NETWORK};
     allow ${SITE_NETWORK};
+    deny all;
     
     location / {
         proxy_pass http://web-server:6767; 
