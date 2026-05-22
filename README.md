@@ -100,6 +100,39 @@ This project focuses on building a multi-site enterprise network and setting up 
    - Select the `clab-topology.yaml` topology file.
    - Click `Deploy Lab` to start the environment.
 
+## Quick Restart After Reboot
+
+If you reboot the PC, run these commands from the repository root to recreate the host bridges, build the VoIP images, and redeploy the lab.
+
+```bash
+# 1) Recreate the host bridges required by the topology
+sudo ip link add name net-isp type bridge 2>/dev/null || true
+sudo ip link set net-isp up
+
+sudo ip link add name net-nomad type bridge 2>/dev/null || true
+sudo ip link set net-nomad up
+
+sudo ip link add name net-site type bridge 2>/dev/null || true
+sudo ip link set net-site up
+
+sudo ip link add name svc-net type bridge 2>/dev/null || true
+sudo ip link set svc-net up
+
+# 2) Build the local VoIP images used by Containerlab
+cd voip-lab
+make build
+cd ..
+
+# 3) Redeploy the lab
+sudo containerlab deploy --topo topology.clab.yaml
+```
+
+If the lab was still present before redeploying, clean it first:
+
+```bash
+sudo containerlab destroy --topo topology.clab.yaml --cleanup
+```
+
 ## DNS notes (how it works + tests)
 
 The DNS server is a BIND9 container connected to P2.
