@@ -1,0 +1,26 @@
+# Public
+server {
+    listen 80;
+    server_name corentinpradier.com;
+
+    location / {
+        proxy_pass http://web-server:80; 
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+    }
+}
+
+# Intranet
+server {
+    listen 80;
+    server_name intranet.corentinpradier.com;
+
+    allow ${NOMAD_NETWORK};
+    allow ${SITE_NETWORK};
+    
+    location / {
+        proxy_pass http://web-server:6767; 
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+    }
+}
