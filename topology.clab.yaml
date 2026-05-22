@@ -20,6 +20,12 @@
 #   P1-PE-isp      120.0.34.0/31    (P1 .0, PE-isp .1)
 #   P2-PE-nomad    120.0.34.2/31    (P2 .2, PE-nomad .3)
 #   P3-PE-site     120.0.34.4/31    (P3 .4, PE-site .5)
+#   P2-DNS         120.0.34.6/31    (P2 .6, DNS .7)
+#
+# VoIP /31s -> 120.0.35.0/24
+#   P4-pbx         120.0.35.0/31    (P4 .0, pbx .1)         -- PBX branché sur P4
+#   PE-site-phone  120.0.35.2/31    (PE-site .2, phone-site .3)  -- client intranet
+#   PE-nomad-phone 120.0.35.4/31    (PE-nomad .4, phone-nomad .5) -- client externe
 #
 # OpenVPN edge LANs
 #   PE-nomad LAN    10.12.10.0/24   (PE-nomad .1, ovpn-nomad .2)
@@ -103,6 +109,10 @@ topology:
         set / interface ethernet-1/3 subinterface 0 admin-state enable
         set / interface ethernet-1/3 subinterface 0 ipv4 admin-state enable
         set / interface ethernet-1/3 subinterface 0 ipv4 address 120.0.33.8/31
+        set / interface ethernet-1/4 admin-state enable
+        set / interface ethernet-1/4 subinterface 0 admin-state enable
+        set / interface ethernet-1/4 subinterface 0 ipv4 admin-state enable
+        set / interface ethernet-1/4 subinterface 0 ipv4 address 120.0.34.6/31
         set / interface ethernet-1/10 admin-state enable
         set / interface ethernet-1/10 subinterface 0 admin-state enable
         set / interface ethernet-1/10 subinterface 0 ipv4 admin-state enable
@@ -114,6 +124,7 @@ topology:
         set / network-instance default interface ethernet-1/1.0
         set / network-instance default interface ethernet-1/2.0
         set / network-instance default interface ethernet-1/3.0
+        set / network-instance default interface ethernet-1/4.0
         set / network-instance default interface ethernet-1/10.0
         set / network-instance default interface system0.0
         set / network-instance default protocols ospf instance main admin-state enable
@@ -123,7 +134,19 @@ topology:
         set / network-instance default protocols ospf instance main area 0.0.0.0 interface ethernet-1/1.0 interface-type point-to-point
         set / network-instance default protocols ospf instance main area 0.0.0.0 interface ethernet-1/2.0 interface-type point-to-point
         set / network-instance default protocols ospf instance main area 0.0.0.0 interface ethernet-1/3.0 interface-type point-to-point
+        set / network-instance default protocols ospf instance main area 0.0.0.0 interface ethernet-1/4.0 interface-type point-to-point
         set / network-instance default protocols ospf instance main area 0.0.0.0 interface ethernet-1/10.0 interface-type point-to-point
+
+    dns-as12:
+      kind: linux
+      image: internetsystemsconsortium/bind9:9.21
+      mgmt-ipv4: 172.20.20.30
+      group: services
+      binds:
+        - ./dns:/etc/bind
+      exec:
+        - ip link set eth1 up
+        - ip addr add 120.0.34.7/31 dev eth1
 
     P3:
       kind: nokia_srlinux
@@ -163,7 +186,7 @@ topology:
         set / network-instance default protocols ospf instance main area 0.0.0.0 interface ethernet-1/2.0 interface-type point-to-point
         set / network-instance default protocols ospf instance main area 0.0.0.0 interface ethernet-1/3.0 interface-type point-to-point
         set / network-instance default protocols ospf instance main area 0.0.0.0 interface ethernet-1/10.0 interface-type point-to-point
-
+  
     P4:
       kind: nokia_srlinux
       mgmt-ipv4: 172.20.20.14
@@ -196,8 +219,13 @@ topology:
         set / network-instance default protocols ospf instance main area 0.0.0.0 interface ethernet-1/1.0 interface-type point-to-point
         set / network-instance default protocols ospf instance main area 0.0.0.0 interface ethernet-1/2.0 interface-type point-to-point
         set / network-instance default protocols ospf instance main area 0.0.0.0 interface ethernet-1/3.0 interface-type point-to-point
+        set / interface ethernet-1/10 admin-state enable
+        set / interface ethernet-1/10 subinterface 0 admin-state enable
+        set / interface ethernet-1/10 subinterface 0 ipv4 admin-state enable
+        set / interface ethernet-1/10 subinterface 0 ipv4 address 120.0.35.0/31
+        set / network-instance default interface ethernet-1/10.0
+        set / network-instance default protocols ospf instance main area 0.0.0.0 interface ethernet-1/10.0 passive true
 
-    # ------------------------------------------------------------------ PE-isp
     PE-isp:
       kind: nokia_srlinux
       mgmt-ipv4: 172.20.20.21
@@ -248,7 +276,12 @@ topology:
         set / network-instance default protocols ospf instance main router-id 120.0.32.22
         set / network-instance default protocols ospf instance main area 0.0.0.0 interface system0.0 passive true
         set / network-instance default protocols ospf instance main area 0.0.0.0 interface ethernet-1/1.0 interface-type point-to-point
-        set / network-instance default protocols ospf instance main area 0.0.0.0 interface ethernet-1/2.0 passive true
+        set / interface ethernet-1/3 admin-state enable
+        set / interface ethernet-1/3 subinterface 0 admin-state enable
+        set / interface ethernet-1/3 subinterface 0 ipv4 admin-state enable
+        set / interface ethernet-1/3 subinterface 0 ipv4 address 120.0.35.4/31
+        set / network-instance default interface ethernet-1/3.0
+        set / network-instance default protocols ospf instance main area 0.0.0.0 interface ethernet-1/3.0 passive true
 
     PE-site:
       kind: nokia_srlinux
@@ -279,8 +312,13 @@ topology:
         set / network-instance default protocols ospf instance main router-id 120.0.32.23
         set / network-instance default protocols ospf instance main area 0.0.0.0 interface system0.0 passive true
         set / network-instance default protocols ospf instance main area 0.0.0.0 interface ethernet-1/1.0 interface-type point-to-point
-        set / network-instance default protocols ospf instance main area 0.0.0.0 interface ethernet-1/2.0 passive true
-
+        set / interface ethernet-1/3 admin-state enable
+        set / interface ethernet-1/3 subinterface 0 admin-state enable
+        set / interface ethernet-1/3 subinterface 0 ipv4 admin-state enable
+        set / interface ethernet-1/3 subinterface 0 ipv4 address 120.0.35.2/31
+        set / network-instance default interface ethernet-1/3.0
+        set / network-instance default protocols ospf instance main area 0.0.0.0 interface ethernet-1/3.0 passive true
+    
     ovpn-nomad:
       kind: linux
       mgmt-ipv4: 172.20.20.31
@@ -336,6 +374,46 @@ topology:
     net-site:
       kind: bridge
 
+    # VoIP
+    pbx:
+      kind: linux
+      image: voip-lab/asterisk
+      mgmt-ipv4: 172.20.20.31
+      binds:
+        - voip-lab/asterisk/sip.conf:/etc/asterisk/sip.conf
+        - voip-lab/asterisk/extensions.conf:/etc/asterisk/extensions.conf
+      exec:
+        - ip addr add 120.0.35.1/31 dev eth1
+        - ip link set eth1 up
+        - ip route add 120.0.35.2/31 via 120.0.35.0
+        - ip route add 120.0.35.4/31 via 120.0.35.0
+
+    phone-site:
+      kind: linux
+      image: voip-lab/client
+      mgmt-ipv4: 172.20.20.32
+      env:
+        SIP_USER: "1001"
+        SIP_SERVER: "120.0.35.1"
+        SIP_PASS: secret1
+      exec:
+        - ip addr add 120.0.35.3/31 dev eth1
+        - ip link set eth1 up
+        - ip route add 120.0.35.0/31 via 120.0.35.2
+
+    phone-nomad:
+      kind: linux
+      image: voip-lab/client
+      mgmt-ipv4: 172.20.20.33
+      env:
+        SIP_USER: "1002"
+        SIP_SERVER: "120.0.35.1"
+        SIP_PASS: secret2
+      exec:
+        - ip addr add 120.0.35.5/31 dev eth1
+        - ip link set eth1 up
+        - ip route add 120.0.35.0/31 via 120.0.35.4
+
   links:
     # IGP Full Mesh Core
     - endpoints: ["P1:e1-1", "P2:e1-1"]   # 120.0.33.0/31
@@ -349,6 +427,7 @@ topology:
     - endpoints: ["P1:e1-10", "PE-isp:e1-1"]    # 120.0.34.0/31
     - endpoints: ["P2:e1-10", "PE-nomad:e1-1"]  # 120.0.34.2/31
     - endpoints: ["P3:e1-10", "PE-site:e1-1"]   # 120.0.34.4/31
+    - endpoints: ["P2:e1-4", "dns-as12:eth1"]   # 120.0.34.6/31
 
     # PE southbound to host bridges
     - endpoints: ["PE-isp:e1-2",   "net-isp:pe-isp-port"]
@@ -357,3 +436,8 @@ topology:
     - endpoints: ["ovpn-nomad:eth1", "net-nomad:ovpn-nomad-port"]
     - endpoints: ["ovpn-site:eth1",  "net-site:ovpn-site-port"]
     - endpoints: ["test-site:eth1",  "net-site:test-site-port"]
+
+    # VoIP
+    - endpoints: ["P4:e1-10",      "pbx:eth1"]          # 120.0.35.0/31
+    - endpoints: ["PE-site:e1-3",  "phone-site:eth1"]   # 120.0.35.2/31  intranet
+    - endpoints: ["PE-nomad:e1-3", "phone-nomad:eth1"]  # 120.0.35.4/31  externe

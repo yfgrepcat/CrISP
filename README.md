@@ -1,5 +1,7 @@
 # Enterprise Network
 
+![Logo](img/logo.png)
+
 > Multi-site enterprise network project with internal routing, interconnection with other autonomous systems, and shared network services.
 
 ## Project Overview
@@ -62,8 +64,6 @@ This project focuses on building a multi-site enterprise network and setting up 
 
 ### Work Packages
 
-
-
 | Team | Members | Iteration Number | Focus | Status |
 | --- | --- | --- | --- | --- |
 | Team 1 | Ismael & Pierre | 1 | DNS and DHCP setup in the AS | KO |
@@ -89,7 +89,7 @@ This project focuses on building a multi-site enterprise network and setting up 
    Use the CLI if Containerlab is already installed on your system:
 
    ```bash
-   sudo containerlab deploy --topo clab-topology.yaml
+   sudo containerlab deploy --topo topology.clab.yaml
    ```
 
    > Note: `sudo` may be disabled in recent Containerlab setups. If that happens, add your user to the `docker` and `clab_admins` groups so you can run Containerlab without `sudo`.
@@ -112,3 +112,75 @@ Each PE has a southbound LAN IP and a static route through its local OpenVPN gat
 - `PE-nomad` -> `10.12.10.1/24`, route to `10.12.20.0/24` via `10.12.10.2`
 - `PE-site` -> `10.12.20.1/24`, route to `10.12.10.0/24` via `10.12.20.2`
 
+
+## DNS notes (how it works + tests)
+
+The DNS server is a BIND9 container connected to P2.
+It uses views:
+- enterprise clients get enterprise answers
+- residential clients get residential answers
+ 
+CAREFULL : Server IP and ACL are random to switch from a vue to another depending on the IP of the client.
+
+Useful IPs in this lab:
+- DNS mgmt IP: 172.20.20.30
+- DNS service IP: 120.0.34.7
+- www (enterprise): 120.0.35.11
+- www (residential/public): 120.0.35.12
+- voip: 120.0.35.13
+
+Quick run from repo root:
+
+```bash
+sudo containerlab destroy --topo topology.clab.yaml
+sudo containerlab deploy --topo topology.clab.yaml
+```
+
+Quick host check:
+
+```bash
+dig @172.20.20.30 www.enterprise.local
+dig @172.20.20.30 voip.enterprise.local
+```
+
+View test (enterprise vs residential):
+
+```bash
+# add temporary source IPs inside DNS container
+docker exec clab-enterprise-ospf-bgp-dns-as12 ip link add ent0 type dummy
+docker exec clab-enterprise-ospf-bgp-dns-as12 ip addr add 120.0.162.10/24 dev ent0
+docker exec clab-enterprise-ospf-bgp-dns-as12 ip link set ent0 up
+
+docker exec clab-enterprise-ospf-bgp-dns-as12 ip link add res0 type dummy
+docker exec clab-enterprise-ospf-bgp-dns-as12 ip addr add 120.0.164.10/24 dev res0
+docker exec clab-enterprise-ospf-bgp-dns-as12 ip link set res0 up
+
+# enterprise source
+docker exec clab-enterprise-ospf-bgp-dns-as12 dig -b 120.0.162.10 @120.0.34.7 www.enterprise.local +short
+
+# residential source
+docker exec clab-enterprise-ospf-bgp-dns-as12 dig -b 120.0.164.10 @120.0.34.7 www.enterprise.local +short
+```
+
+Expected:
+- enterprise source returns 120.0.35.11
+- residential source returns 120.0.35.12
+
+Cleanup after test:
+
+```bash
+docker exec clab-enterprise-ospf-bgp-dns-as12 ip link del ent0
+docker exec clab-enterprise-ospf-bgp-dns-as12 ip link del res0
+```
+
+Debug commands if needed:
+
+```bash
+docker ps --filter "name=dns-as12" --format "{{.Names}}"
+docker exec -it $(docker ps --filter "name=dns-as12" -q) bash
+named-checkconf /etc/bind/named.conf
+named-checkzone enterprise.local /etc/bind/zones/db.enterprise.local
+journalctl -u bind9
+```
+
+More details located under dns/README.md.
