@@ -27,15 +27,27 @@
 #   PE-site-phone  120.0.35.2/31    (PE-site .2, phone-site .3)  -- client intranet
 #   PE-nomad-phone 120.0.35.4/31    (PE-nomad .4, phone-nomad .5) -- client externe
 #
-# OpenVPN edge LANs
-#   PE-nomad LAN    10.12.10.0/24   (PE-nomad .1, ovpn-nomad .2)
-#   PE-site LAN     10.12.20.0/24   (PE-site .1,  ovpn-site .2)
-#   VPN tunnel      10.255.255.0/30 (nomad .1,    site .2)
+# HQ LAN (only LAN advertised in OSPF as a passive)
+#   PE-site LAN     10.12.20.0/24   (PE-site .1, ovpn-site .2)
+#
+# Public side (NOT in OSPF — opaque to the enterprise IGP)
+#   net-isp 203.0.113.0/24  (RFC 5737 TEST-NET-3 as the "Internet")
+#     PE-isp e1-2     203.0.113.1/24
+#     ovpn-site eth2  203.0.113.50/24    (HQ DMZ leg / OpenVPN listener)
+#     home-ce eth1    203.0.113.20/24    (CE WAN, source of NATed nomad traffic)
+#
+# Nomad home network (behind the CE — opaque to everything else)
+#   net-home 192.168.1.0/24
+#     home-ce eth2    192.168.1.1/24     (CE LAN, NAT gateway)
+#     ovpn-nomad eth1 192.168.1.10/24    (CPE plugged into the CE)
+#
+# VPN tunnel (point-to-point, static-key)
+#   10.255.255.0/30   (nomad .1, HQ .2)
 #
 # Host bridges (create on host before deploy):
-#   sudo ip link add name net-isp type bridge && sudo ip link set net-isp   up
-#   sudo ip link add name net-nomad type bridge && sudo ip link set net-nomad up
-#   sudo ip link add name net-site type bridge && sudo ip link set net-site  up
+#   sudo ip link add name net-isp  type bridge && sudo ip link set net-isp  up
+#   sudo ip link add name net-site type bridge && sudo ip link set net-site up
+#   sudo ip link add name net-home type bridge && sudo ip link set net-home up
 # =============================================================================
 
 name: enterprise-ospf-bgp
@@ -235,11 +247,16 @@ topology:
         set / interface ethernet-1/1 subinterface 0 admin-state enable
         set / interface ethernet-1/1 subinterface 0 ipv4 admin-state enable
         set / interface ethernet-1/1 subinterface 0 ipv4 address 120.0.34.1/31
+        set / interface ethernet-1/2 admin-state enable
+        set / interface ethernet-1/2 subinterface 0 admin-state enable
+        set / interface ethernet-1/2 subinterface 0 ipv4 admin-state enable
+        set / interface ethernet-1/2 subinterface 0 ipv4 address 203.0.113.1/24
         set / interface system0 admin-state enable
         set / interface system0 subinterface 0 admin-state enable
         set / interface system0 subinterface 0 ipv4 admin-state enable
         set / interface system0 subinterface 0 ipv4 address 120.0.32.21/32
         set / network-instance default interface ethernet-1/1.0
+        set / network-instance default interface ethernet-1/2.0
         set / network-instance default interface system0.0
         set / network-instance default protocols ospf instance main admin-state enable
         set / network-instance default protocols ospf instance main version ospf-v2
@@ -256,21 +273,12 @@ topology:
         set / interface ethernet-1/1 subinterface 0 admin-state enable
         set / interface ethernet-1/1 subinterface 0 ipv4 admin-state enable
         set / interface ethernet-1/1 subinterface 0 ipv4 address 120.0.34.3/31
-        set / interface ethernet-1/2 admin-state enable
-        set / interface ethernet-1/2 subinterface 0 admin-state enable
-        set / interface ethernet-1/2 subinterface 0 ipv4 admin-state enable
-        set / interface ethernet-1/2 subinterface 0 ipv4 address 10.12.10.1/24
         set / interface system0 admin-state enable
         set / interface system0 subinterface 0 admin-state enable
         set / interface system0 subinterface 0 ipv4 admin-state enable
         set / interface system0 subinterface 0 ipv4 address 120.0.32.22/32
         set / network-instance default interface ethernet-1/1.0
-        set / network-instance default interface ethernet-1/2.0
         set / network-instance default interface system0.0
-        set / network-instance default static-routes route 10.12.20.2/32 next-hop-group as-transport
-        set / network-instance default next-hop-groups group as-transport nexthop 1 ip-address 120.0.34.2
-        set / network-instance default static-routes route 10.12.20.0/24 next-hop-group ovpn-next
-        set / network-instance default next-hop-groups group ovpn-next nexthop 1 ip-address 10.12.10.2
         set / network-instance default protocols ospf instance main admin-state enable
         set / network-instance default protocols ospf instance main version ospf-v2
         set / network-instance default protocols ospf instance main router-id 120.0.32.22
@@ -303,15 +311,14 @@ topology:
         set / network-instance default interface ethernet-1/1.0
         set / network-instance default interface ethernet-1/2.0
         set / network-instance default interface system0.0
-        set / network-instance default static-routes route 10.12.10.2/32 next-hop-group as-transport
-        set / network-instance default next-hop-groups group as-transport nexthop 1 ip-address 120.0.34.4
-        set / network-instance default static-routes route 10.12.10.0/24 next-hop-group ovpn-next
+        set / network-instance default static-routes route 10.255.255.0/30 next-hop-group ovpn-next
         set / network-instance default next-hop-groups group ovpn-next nexthop 1 ip-address 10.12.20.2
         set / network-instance default protocols ospf instance main admin-state enable
         set / network-instance default protocols ospf instance main version ospf-v2
         set / network-instance default protocols ospf instance main router-id 120.0.32.23
         set / network-instance default protocols ospf instance main area 0.0.0.0 interface system0.0 passive true
         set / network-instance default protocols ospf instance main area 0.0.0.0 interface ethernet-1/1.0 interface-type point-to-point
+        set / network-instance default protocols ospf instance main area 0.0.0.0 interface ethernet-1/2.0 passive true
         set / interface ethernet-1/3 admin-state enable
         set / interface ethernet-1/3 subinterface 0 admin-state enable
         set / interface ethernet-1/3 subinterface 0 ipv4 admin-state enable
@@ -319,9 +326,12 @@ topology:
         set / network-instance default interface ethernet-1/3.0
         set / network-instance default protocols ospf instance main area 0.0.0.0 interface ethernet-1/3.0 passive true
     
+    # Pre-configured CPE: shipped to the nomad user, plugged into their home CE.
+    # Single uplink (eth1) on net-home; default goes through home-ce, which
+    # NATs out toward net-isp. Dials the HQ public IP (203.0.113.50) over UDP/1194.
     ovpn-nomad:
       kind: linux
-      mgmt-ipv4: 172.20.20.31
+      mgmt-ipv4: 172.20.20.41
       group: services
       cap-add:
         - NET_ADMIN
@@ -332,15 +342,18 @@ topology:
         - vpn/openvpn/nomad.conf:/etc/openvpn/ovpn.conf:ro
       exec:
         - apk add --no-cache openvpn iproute2
-        - ip addr add 10.12.10.2/24 dev eth1
-        - ip route replace default via 10.12.10.1 dev eth1
-        - ip route replace 10.12.20.2/32 via 10.12.10.1 dev eth1
+        - ip addr add 192.168.1.10/24 dev eth1
+        - sh -lc 'ip route del default via 172.20.20.1 dev eth0 || true'
+        - ip route replace default via 192.168.1.1 dev eth1
         - sysctl -w net.ipv4.ip_forward=1
         - openvpn --config /etc/openvpn/ovpn.conf --daemon
 
+    # HQ OpenVPN concentrator: dual-homed.
+    #   eth1 -> net-site (10.12.20.2/24)   inner / enterprise LAN
+    #   eth2 -> net-isp  (203.0.113.50/24) DMZ leg, listens on UDP/1194
     ovpn-site:
       kind: linux
-      mgmt-ipv4: 172.20.20.32
+      mgmt-ipv4: 172.20.20.42
       group: services
       cap-add:
         - NET_ADMIN
@@ -352,14 +365,31 @@ topology:
       exec:
         - apk add --no-cache openvpn iproute2
         - ip addr add 10.12.20.2/24 dev eth1
+        - ip addr add 203.0.113.50/24 dev eth2
         - ip route replace default via 10.12.20.1 dev eth1
-        - ip route replace 10.12.10.2/32 via 10.12.20.1 dev eth1
         - sysctl -w net.ipv4.ip_forward=1
         - openvpn --config /etc/openvpn/ovpn.conf --daemon
 
+    # Home CE router: simulates a consumer Internet box. NATs the home LAN
+    # (192.168.1.0/24) out to the "Internet" (net-isp, 203.0.113.0/24).
+    home-ce:
+      kind: linux
+      mgmt-ipv4: 172.20.20.43
+      group: services
+      cap-add:
+        - NET_ADMIN
+      exec:
+        - apk add --no-cache iproute2 iptables
+        - ip addr add 203.0.113.20/24 dev eth1     # WAN (net-isp)
+        - ip addr add 192.168.1.1/24  dev eth2     # LAN (net-home)
+        - sh -lc 'ip route del default via 172.20.20.1 dev eth0 || true'
+        - ip route replace default via 203.0.113.1 dev eth1
+        - sysctl -w net.ipv4.ip_forward=1
+        - iptables -t nat -A POSTROUTING -o eth1 -j MASQUERADE
+
     test-site:
       kind: linux
-      mgmt-ipv4: 172.20.20.41
+      mgmt-ipv4: 172.20.20.51
       group: hosts
       exec:
         - ip addr add 10.12.20.100/24 dev eth1
@@ -368,11 +398,11 @@ topology:
 
     # Host bridges
     net-isp:
-      kind: bridge
-    net-nomad:
-      kind: bridge
+      kind: bridge      # "public Internet" — 203.0.113.0/24
     net-site:
-      kind: bridge
+      kind: bridge      # HQ LAN behind PE-site — 10.12.20.0/24
+    net-home:
+      kind: bridge      # nomad's home LAN behind home-ce — 192.168.1.0/24
 
     # VoIP
     pbx:
@@ -430,12 +460,20 @@ topology:
     - endpoints: ["P2:e1-4", "dns-as12:eth1"]   # 120.0.34.6/31
 
     # PE southbound to host bridges
-    - endpoints: ["PE-isp:e1-2",   "net-isp:pe-isp-port"]
-    - endpoints: ["PE-nomad:e1-2", "net-nomad:pe-nomad-port"]
-    - endpoints: ["PE-site:e1-2",  "net-site:pe-site-port"]
-    - endpoints: ["ovpn-nomad:eth1", "net-nomad:ovpn-nomad-port"]
-    - endpoints: ["ovpn-site:eth1",  "net-site:ovpn-site-port"]
+    - endpoints: ["PE-isp:e1-2",   "net-isp:pe-isp-port"]    # 203.0.113.1/24 (public side)
+    - endpoints: ["PE-site:e1-2",  "net-site:pe-site-port"]  # 10.12.20.1/24  (HQ LAN)
+
+    # HQ DMZ + LAN (ovpn-site is dual-homed)
+    - endpoints: ["ovpn-site:eth1",  "net-site:ovpn-site-port"]   # 10.12.20.2/24
+    - endpoints: ["ovpn-site:eth2",  "net-isp:ovpn-site-pub"]     # 203.0.113.50/24
     - endpoints: ["test-site:eth1",  "net-site:test-site-port"]
+
+    # Public Internet ↔ home network (via the CE)
+    - endpoints: ["home-ce:eth1",    "net-isp:home-ce-wan"]       # 203.0.113.20/24
+    - endpoints: ["home-ce:eth2",    "net-home:home-ce-lan"]      # 192.168.1.1/24
+
+    # Nomad CPE plugs into the home LAN
+    - endpoints: ["ovpn-nomad:eth1", "net-home:ovpn-nomad-port"]  # 192.168.1.10/24
 
     # VoIP
     - endpoints: ["P4:e1-10",      "pbx:eth1"]          # 120.0.35.0/31

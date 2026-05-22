@@ -100,17 +100,22 @@ This project focuses on building a multi-site enterprise network and setting up 
    - Select the `clab-topology.yaml` topology file.
    - Click `Deploy Lab` to start the environment.
 
-## OpenVPN Site-to-Site (PE-nomad <-> PE-site)
+## OpenVPN nomad-CPE → HQ (over the public side)
 
-The topology now includes two Linux OpenVPN gateways:
+The nomad side models a pre-configured CPE that the user plugs into a home
+internet box. It dials into the HQ concentrator over the simulated public
+Internet — the enterprise IGP does **not** carry the nomad network.
 
-- `ovpn-nomad` on `net-nomad` (10.12.10.2/24)
-- `ovpn-site` on `net-site` (10.12.20.2/24)
-
-Each PE has a southbound LAN IP and a static route through its local OpenVPN gateway:
-
-- `PE-nomad` -> `10.12.10.1/24`, route to `10.12.20.0/24` via `10.12.10.2`
-- `PE-site` -> `10.12.20.1/24`, route to `10.12.10.0/24` via `10.12.20.2`
+- `ovpn-nomad` (the CPE) sits behind `home-ce` on `net-home` (192.168.1.10/24,
+  default via 192.168.1.1).
+- `home-ce` does MASQUERADE from `net-home` to `net-isp` (WAN 203.0.113.20/24).
+- `PE-isp` exposes `203.0.113.1/24` on `net-isp` (kept **out of OSPF** — the
+  public side is opaque to the enterprise).
+- `ovpn-site` (HQ concentrator) is dual-homed: `eth1` on `net-site`
+  (10.12.20.2/24, inside the AS) and `eth2` on `net-isp` (203.0.113.50/24,
+  DMZ leg where it listens on UDP/1194).
+- Tunnel inner: `10.255.255.0/30` (nomad .1, HQ .2). `PE-site` has a static
+  for that subnet via `ovpn-site` so HQ hosts can reach the CPE.
 
 
 ## DNS notes (how it works + tests)

@@ -78,7 +78,7 @@
       }
     },
     {
-      "id": "PE-site",
+      "id": "dns-as12",
       "interfacePattern": "e1-{n}",
       "position": {
         "x": 600,
@@ -142,6 +142,10 @@
         "lat": 51.575846,
         "lng": 9.182932
       }
+    },
+    {
+      "id": "PE-site",
+      "interfacePattern": "e1-{n}"
     }
   ],
   "edgeAnnotations": [],
