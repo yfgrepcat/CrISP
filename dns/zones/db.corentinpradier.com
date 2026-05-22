@@ -1,0 +1,15 @@
+$TTL 3600
+@ IN SOA ns.corentinpradier.com. admin.corentinpradier.com. (
+    2026052202
+    7200
+    1800
+    604800
+    3600
+)
+
+@       IN NS    ns.corentinpradier.com.
+ns      IN A     120.0.34.7
+@       IN A     172.20.20.34
+www     IN CNAME @
+intranet IN A    172.20.20.34
+; end of zone

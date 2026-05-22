@@ -15,6 +15,7 @@ server {
     listen 80;
     server_name intranet.corentinpradier.com;
 
+    allow 172.20.20.0/24;
     allow ${NOMAD_NETWORK};
     allow ${SITE_NETWORK};
     deny all;
