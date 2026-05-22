@@ -18,7 +18,7 @@ This project focuses on building a multi-site enterprise network and setting up 
 | Thomas Silvestre |
 | Nikita Ziuzin |
 | Stéphane Loppinet |
-| Ismael Alriyami |
+| Ismail Al Riyami |
 | Pierre Chaveroux |
 
 ### Scope
@@ -66,7 +66,7 @@ This project focuses on building a multi-site enterprise network and setting up 
 
 | Team | Members | Iteration Number | Focus | Status |
 | --- | --- | --- | --- | --- |
-| Team 1 | Ismael & Pierre | 1 | DNS and DHCP setup in the AS | KO |
+| Team 1 | Ismail & Pierre | 1 | DNS and DHCP setup in the AS | KO |
 | Team 2 | Nikita & Stéphane | 1 | VoIP and web Docker setup inside the enterprise | KO |
 | Team 3 | Corentin & Emilien | 1 | eBGP interconnection and VPN | KO |
 | Team 4 | Yoann & Thomas | 1 |  Internal AS routing | KO |
@@ -185,4 +185,72 @@ Summary of what was done:
 
 - **Pierre:** DNS integrated and merged into main. Next: test DNS behavior in real conditions across different networks and with other groups.
 
-- **Ismael:** DHCP integrated into the topology and functional when used directly by a client. Next time: investigate configuring DHCP relay.
+- **Ismail:** DHCP integrated into the topology and functional when used directly by a client. Next time: investigate configuring DHCP relay.
+
+## DHCP notes (how it works + tests)
+
+Central DHCP: `clab-enterprise-ospf-bgp-dhcp` (120.0.36.10) runs `dnsmasq`. It serves the local pool and relayed subnets (via `giaddr`). Residential boxes bootstrap WAN via DHCP and run local `dnsmasq` for LAN clients.
+
+Quick check: `docker exec clab-enterprise-ospf-bgp-dhcp cat /var/lib/misc/dnsmasq.leases`
+
+If relayed clients fail, ensure routers forward DHCP (set `giaddr`).
+
+### How to test
+
+1. Rebuild the lab from scratch.
+
+   ```bash
+   sudo containerlab destroy --topo topology.clab.yaml
+   sudo containerlab deploy --topo topology.clab.yaml
+   ```
+
+2. Confirm the lab no longer contains `TESTCLIENT`.
+
+   ```bash
+   docker ps --format '{{.Names}}' | grep -E 'TESTCLIENT|SITE-CLIENT|NOMAD-CLIENT|RESIDENTIAL-BOX|dhcp'
+   ```
+
+3. Check that the relay clients obtain addresses.
+
+   ```bash
+   docker exec clab-enterprise-ospf-bgp-SITE-CLIENT ip addr show eth1
+   docker exec clab-enterprise-ospf-bgp-SITE-CLIENT ip route
+   docker exec clab-enterprise-ospf-bgp-NOMAD-CLIENT ip addr show eth1
+   docker exec clab-enterprise-ospf-bgp-NOMAD-CLIENT ip route
+   ```
+
+4. Verify the DHCP service container is running and listening on the service network.
+
+   ```bash
+   docker ps --format '{{.Names}}' | grep '^clab-enterprise-ospf-bgp-dhcp$'
+   # check dnsmasq process inside the container
+   docker exec clab-enterprise-ospf-bgp-dhcp ps aux | grep dnsmasq
+   # view recent logs to confirm sockets/leases
+   docker logs clab-enterprise-ospf-bgp-dhcp | tail -n 50
+   ```
+
+5. If the residential path is part of the scenario, confirm the box bootstraps correctly and the downstream client gets a lease.
+
+   ```bash
+   docker exec clab-enterprise-ospf-bgp-RESIDENTIAL-BOX ip addr show eth1
+   docker exec clab-enterprise-ospf-bgp-RESIDENTIAL-BOX ip addr show eth2
+   docker exec clab-enterprise-ospf-bgp-RESIDENTIAL-BOX ip route
+   docker exec clab-enterprise-ospf-bgp-NOMAD-CLIENT ping -c 3 120.0.36.10
+   ```
+
+### Residential box notes
+
+`RESIDENTIAL-BOX` is a simple consumer gateway: WAN via DHCP (e.g. 120.0.38.120 on `eth1`), LAN `192.168.1.1/24` on `eth2` with `dnsmasq`, and NAT enabled (`/proc/sys/net/ipv4/ip_forward = 1` and `iptables -t nat -A POSTROUTING -o eth1 -j MASQUERADE`).
+
+Inspect leases:
+
+```bash
+docker exec clab-enterprise-ospf-bgp-dhcp grep 192.168.1.168 /var/lib/misc/dnsmasq.leases || true
+docker exec clab-enterprise-ospf-bgp-RESIDENTIAL-BOX grep 192.168.1.168 /var/lib/misc/dnsmasq.leases || true
+```
+
+Trace DHCP (if `tcpdump` present):
+
+```bash
+docker exec -it clab-enterprise-ospf-bgp-dhcp tcpdump -ni eth1 -s 0 -vv udp port 67 or udp port 68
+```
