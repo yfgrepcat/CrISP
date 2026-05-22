@@ -18,7 +18,7 @@ This project focuses on building a multi-site enterprise network and setting up 
 | Thomas Silvestre |
 | Nikita Ziuzin |
 | Stéphane Loppinet |
-| Ismael Alriyami |
+| Ismail Al Riyami |
 | Pierre Chaveroux |
 
 ### Scope
@@ -66,7 +66,7 @@ This project focuses on building a multi-site enterprise network and setting up 
 
 | Team | Members | Iteration Number | Focus | Status |
 | --- | --- | --- | --- | --- |
-| Team 1 | Ismael & Pierre | 1 | DNS and DHCP setup in the AS | KO |
+| Team 1 | Ismail & Pierre | 1 | DNS and DHCP setup in the AS | KO |
 | Team 2 | Nikita & Stéphane | 1 | VoIP and web Docker setup inside the enterprise | KO |
 | Team 3 | Corentin & Emilien | 1 | eBGP interconnection and VPN | KO |
 | Team 4 | Yoann & Thomas | 1 |  Internal AS routing | KO |
@@ -113,6 +113,10 @@ sudo containerlab destroy --topo topology.clab.yaml --cleanup
 ### 1) Recreate the host bridges required by the topology
 
 ```bash
+If you reboot the PC, run these commands from the repository root to recreate the host bridges, build the VoIP images, and redeploy the lab.
+
+```bash
+# 1) Recreate the host bridges required by the topology
 sudo ip link add name net-isp type bridge 2>/dev/null || true
 sudo ip link set net-isp up
 
@@ -139,6 +143,41 @@ cd ..
 ```bash
 sudo containerlab deploy --topo topology.clab.yaml
 ```
+
+sudo ip link add name svc-net type bridge 2>/dev/null || true
+sudo ip link set svc-net up
+
+# 2) Build the local VoIP images used by Containerlab
+cd voip-lab
+make build
+cd ..
+
+# 3) Redeploy the lab
+sudo containerlab deploy --topo topology.clab.yaml
+```
+
+If the lab was still present before redeploying, clean it first:
+
+```bash
+sudo containerlab destroy --topo topology.clab.yaml --cleanup
+```
+## OpenVPN nomad-CPE → HQ (over the public side)
+
+The nomad side models a pre-configured CPE that the user plugs into a home
+internet box. It dials into the HQ concentrator over the simulated public
+Internet — the enterprise IGP does **not** carry the nomad network.
+
+- `ovpn-nomad` (the CPE) sits behind `home-ce` on `net-home` (192.168.1.10/24,
+  default via 192.168.1.1).
+- `home-ce` does MASQUERADE from `net-home` to `net-isp` (WAN 203.0.113.20/24).
+- `PE-isp` exposes `203.0.113.1/24` on `net-isp` (kept **out of OSPF** — the
+  public side is opaque to the enterprise).
+- `ovpn-site` (HQ concentrator) is dual-homed: `eth1` on `net-site`
+  (10.12.20.2/24, inside the AS) and `eth2` on `net-isp` (203.0.113.50/24,
+  DMZ leg where it listens on UDP/1194).
+- Tunnel inner: `10.255.255.0/30` (nomad .1, HQ .2). `PE-site` has a static
+  for that subnet via `ovpn-site` so HQ hosts can reach the CPE.
+
 
 ## DNS notes (how it works + tests)
 
@@ -225,7 +264,8 @@ named-checkconf /etc/bind/named.conf
 named-checkzone enterprise.local /etc/bind/zones/db.enterprise.local
 journalctl -u bind9
 ```
-More details are in dns/README.md.
+
+More details located under dns/README.md.
 
 ## [Monday, May 18] End-of-session summary
 
@@ -241,4 +281,72 @@ Summary of what was done:
 
 - **Pierre:** DNS integrated and merged into main. Next: test DNS behavior in real conditions across different networks and with other groups.
 
-- **Ismael:** DHCP integrated into the topology and functional when used directly by a client. Next time: investigate configuring DHCP relay.
+- **Ismail:** DHCP integrated into the topology and functional when used directly by a client. Next time: investigate configuring DHCP relay.
+
+## DHCP notes (how it works + tests)
+
+Central DHCP: `clab-enterprise-ospf-bgp-dhcp` (120.0.36.10) runs `dnsmasq`. It serves the local pool and relayed subnets (via `giaddr`). Residential boxes bootstrap WAN via DHCP and run local `dnsmasq` for LAN clients.
+
+Quick check: `docker exec clab-enterprise-ospf-bgp-dhcp cat /var/lib/misc/dnsmasq.leases`
+
+If relayed clients fail, ensure routers forward DHCP (set `giaddr`).
+
+### How to test
+
+1. Rebuild the lab from scratch.
+
+   ```bash
+   sudo containerlab destroy --topo topology.clab.yaml
+   sudo containerlab deploy --topo topology.clab.yaml
+   ```
+
+2. Confirm the lab no longer contains `TESTCLIENT`.
+
+   ```bash
+   docker ps --format '{{.Names}}' | grep -E 'TESTCLIENT|SITE-CLIENT|NOMAD-CLIENT|RESIDENTIAL-BOX|dhcp'
+   ```
+
+3. Check that the relay clients obtain addresses.
+
+   ```bash
+   docker exec clab-enterprise-ospf-bgp-SITE-CLIENT ip addr show eth1
+   docker exec clab-enterprise-ospf-bgp-SITE-CLIENT ip route
+   docker exec clab-enterprise-ospf-bgp-NOMAD-CLIENT ip addr show eth1
+   docker exec clab-enterprise-ospf-bgp-NOMAD-CLIENT ip route
+   ```
+
+4. Verify the DHCP service container is running and listening on the service network.
+
+   ```bash
+   docker ps --format '{{.Names}}' | grep '^clab-enterprise-ospf-bgp-dhcp$'
+   # check dnsmasq process inside the container
+   docker exec clab-enterprise-ospf-bgp-dhcp ps aux | grep dnsmasq
+   # view recent logs to confirm sockets/leases
+   docker logs clab-enterprise-ospf-bgp-dhcp | tail -n 50
+   ```
+
+5. If the residential path is part of the scenario, confirm the box bootstraps correctly and the downstream client gets a lease.
+
+   ```bash
+   docker exec clab-enterprise-ospf-bgp-RESIDENTIAL-BOX ip addr show eth1
+   docker exec clab-enterprise-ospf-bgp-RESIDENTIAL-BOX ip addr show eth2
+   docker exec clab-enterprise-ospf-bgp-RESIDENTIAL-BOX ip route
+   docker exec clab-enterprise-ospf-bgp-NOMAD-CLIENT ping -c 3 120.0.36.10
+   ```
+
+### Residential box notes
+
+`RESIDENTIAL-BOX` is a simple consumer gateway: WAN via DHCP (e.g. 120.0.38.120 on `eth1`), LAN `192.168.1.1/24` on `eth2` with `dnsmasq`, and NAT enabled (`/proc/sys/net/ipv4/ip_forward = 1` and `iptables -t nat -A POSTROUTING -o eth1 -j MASQUERADE`).
+
+Inspect leases:
+
+```bash
+docker exec clab-enterprise-ospf-bgp-dhcp grep 192.168.1.168 /var/lib/misc/dnsmasq.leases || true
+docker exec clab-enterprise-ospf-bgp-RESIDENTIAL-BOX grep 192.168.1.168 /var/lib/misc/dnsmasq.leases || true
+```
+
+Trace DHCP (if `tcpdump` present):
+
+```bash
+docker exec -it clab-enterprise-ospf-bgp-dhcp tcpdump -ni eth1 -s 0 -vv udp port 67 or udp port 68
+```

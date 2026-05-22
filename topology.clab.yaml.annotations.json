@@ -78,7 +78,7 @@
       }
     },
     {
-      "id": "PE-site",
+      "id": "dns-as12",
       "interfacePattern": "e1-{n}",
       "position": {
         "x": 600,
@@ -121,6 +121,31 @@
         "lat": 52.090823,
         "lng": 10.662026
       }
+    },
+    {
+      "id": "ovpn-nomad",
+      "geoCoordinates": {
+        "lat": 50.836512,
+        "lng": 4.332121
+      }
+    },
+    {
+      "id": "ovpn-site",
+      "geoCoordinates": {
+        "lat": 53.48725,
+        "lng": 1.852141
+      }
+    },
+    {
+      "id": "test-site",
+      "geoCoordinates": {
+        "lat": 51.575846,
+        "lng": 9.182932
+      }
+    },
+    {
+      "id": "PE-site",
+      "interfacePattern": "e1-{n}"
     }
   ],
   "edgeAnnotations": [],
