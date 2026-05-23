@@ -1,7 +1,7 @@
 # Public
 server {
-    listen 80;
-    server_name corentinpradier.com;
+    listen 80 default_server;
+    server_name extranet.corentinpradier.com;
 
     location / {
         proxy_pass http://web-server:80; 
