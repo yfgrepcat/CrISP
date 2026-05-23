@@ -403,8 +403,8 @@ topology:
       cap-add:
         - NET_ADMIN
       binds:
-        - ./residential/dnsmasq.conf:/etc/dnsmasq.conf
-        - ./residential/setup-box.sh:/usr/local/bin/setup-box.sh
+        - ./dhcp/residential/dnsmasq.conf:/etc/dnsmasq.conf
+        - ./dhcp/residential/setup-box.sh:/usr/local/bin/setup-box.sh
       cmd: /bin/sh /usr/local/bin/setup-box.sh
 
     NOMAD-CLIENT:
@@ -484,11 +484,11 @@ topology:
     # VoIP
     pbx:
       kind: linux
-      image: voip-lab/asterisk
+      image: voip/asterisk
       mgmt-ipv4: 172.20.20.31
       binds:
-        - voip-lab/asterisk/sip.conf:/etc/asterisk/sip.conf
-        - voip-lab/asterisk/extensions.conf:/etc/asterisk/extensions.conf
+        - voip/asterisk/sip.conf:/etc/asterisk/sip.conf
+        - voip/asterisk/extensions.conf:/etc/asterisk/extensions.conf
       exec:
         - sh -lc 'printf "nameserver 172.20.20.30\n" > /etc/resolv.conf'
         - ip addr add 120.0.35.1/31 dev eth1
@@ -498,7 +498,7 @@ topology:
 
     phone-site:
       kind: linux
-      image: voip-lab/client
+      image: voip/client
       mgmt-ipv4: 172.20.20.32
       env:
         SIP_USER: "1001"
@@ -512,7 +512,7 @@ topology:
 
     phone-nomad:
       kind: linux
-      image: voip-lab/client
+      image: voip/client
       mgmt-ipv4: 172.20.20.33
       env:
         SIP_USER: "1002"
