@@ -90,6 +90,21 @@ docker exec clab-enterprise-ospf-bgp-RESIDENTIAL-BOX ip route
 docker exec clab-enterprise-ospf-bgp-NOMAD-CLIENT ping -c 3 120.0.36.10
 ```
 
+## VPN service
+
+The OpenVPN nomad CPE is documented in [vpn/README.md](vpn/README.md). It models a
+pre-configured home box that dials the HQ concentrator over the public side.
+
+After the lab is up, run this smoke test from the nomad CPE to verify the tunnel
+and the return path into the HQ LAN:
+
+```bash
+docker exec clab-enterprise-ospf-bgp-ovpn-nomad ping -c 3 10.12.20.100
+```
+
+That should reach `test-site` on the HQ LAN through `ovpn-site` and the static
+route on `PE-site`.
+
 ## Web service
 
 ### Public website
