@@ -133,7 +133,7 @@ docker cp clab-enterprise-ospf-bgp-NOMAD-CLIENT:/tmp/nomad-client-dns.pcap .
 docker cp clab-enterprise-ospf-bgp-test-site:/tmp/test-client-dns.pcap .
 ```
 
-Filtres wireshark à utiliser : 
+Wireshark filters : 
 - `dns`
 - `udp.port == 53`
 - `dns.flags.response == 1`
