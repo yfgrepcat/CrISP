@@ -53,8 +53,9 @@ cd voip
 make build
 cd ..
 
-# Build the local Arista vEOS image if vrnetlab/arista_veos:4.31.0F is missing.
-./scripts/build-veos-image.sh
+# Load the Arista vEOS image (vrnetlab/arista_veos:4.31.0F) — see "Arista vEOS image".
+docker load -i arista_veos_4.31.0F.tar.gz
+# (or build it yourself: ./scripts/build-veos-image.sh)
 
 sudo containerlab destroy --topo topology.clab.yaml --cleanup
 sudo containerlab deploy --topo topology.clab.yaml
@@ -68,6 +69,19 @@ TRUNK_IFACE=<your-host-nic> sudo -E ./scripts/connect-breakout-trunk.sh
 sudo containerlab destroy --topo topology.clab.yaml --cleanup
 sudo containerlab deploy --topo topology.clab.yaml
 ```
+
+## Arista vEOS image
+
+`P4` runs as Arista vEOS and needs the `vrnetlab/arista_veos:4.31.0F` image present locally. The topology pins `image-pull-policy: Never`, so containerlab never tries to pull it — you must load or build it first.
+
+Load the prebuilt image from the archive shipped with the repo:
+
+```bash
+docker load -i arista_veos_4.31.0F.tar.gz
+docker images | grep arista_veos      # expect: vrnetlab/arista_veos   4.31.0F
+```
+
+Alternatively build it yourself from an EOS image with `./scripts/build-veos-image.sh`. If you use a different tag, override it at deploy time with `VEOS_IMAGE=<repo:tag>`.
 
 ## Arista P4 breakout trunk
 
@@ -149,6 +163,7 @@ How it works (short version):
 - DNS (`120.0.34.7`) answers with different views depending on client subnet (`120.0.37.0/24` vs `120.0.38.0/24`).
 - VoIP phones register to PBX (`120.0.35.1`) and call each other across PE-site/PE-nomad.
 - VPN links nomad side to HQ: `ovpn-nomad` reaches `ovpn-site` over public `203.0.113.0/24`, then into HQ LAN (`10.12.20.0/24`).
+- RADIUS (`120.0.34.11`) authenticates router logins; the Arista `P4` is the NAS and maps authenticated users (`alice`/`bob`) to privilege level 15.
 
 ## DHCP service
 
@@ -169,3 +184,47 @@ The web architecture and validation commands are documented in [web/README.md](w
 ## VoIP service
 
 The VoIP architecture and smoke test procedure are documented in [voip/README.md](voip/README.md).
+
+## RADIUS service
+
+A minimal FreeRADIUS server (node `radius`, service IP `120.0.34.11`, hung off `P2`) provides authentication for the AS. Two test users live in `radius/authorize` — `alice`/`alice123` and `bob`/`bob123` — and the shared secret for every NAS client is `testing123`. The Arista router `P4` is configured as a RADIUS client (`configs/P4.eos.cfg`) and authenticates logins against it, mapping users to privilege level 15. Architecture details are in [radius/README.md](radius/README.md).
+
+### Test the server directly
+
+```bash
+# Access-Accept for a valid user, Access-Reject for a bad password / unknown user
+docker exec clab-enterprise-ospf-bgp-radius radtest alice alice123 127.0.0.1 0 testing123
+docker exec clab-enterprise-ospf-bgp-radius radtest alice wrongpw  127.0.0.1 0 testing123
+```
+
+Inspect the exact attributes returned (e.g. the privilege level sent to Arista):
+
+```bash
+docker exec clab-enterprise-ospf-bgp-radius sh -c \
+  'echo "User-Name=alice,User-Password=alice123" | radclient -x 127.0.0.1:1812 auth testing123'
+# expect: Access-Accept ... Arista-AVPair = "shell:priv-lvl=15"
+```
+
+The service IP is reachable across the AS because its `/31` is advertised in OSPF:
+
+```bash
+docker exec clab-enterprise-ospf-bgp-test-site ping -c2 120.0.34.11
+```
+
+### Test from the Arista P4 router
+
+`P4` is reached over its vrnetlab serial console (it has no management IP). Open it with telnet:
+
+```bash
+docker exec -it clab-enterprise-ospf-bgp-P4 telnet localhost 5000
+```
+
+Log in as the RADIUS user `alice` / `alice123` — you land directly at privilege level 15 (`P4#`):
+
+```text
+P4#show privilege                            ! -> Current privilege level is 15
+P4#test aaa group radius alice alice123      ! -> "User was successfully authenticated."
+P4#test aaa group radius bob  wrongpw        ! -> "Authentication failed"
+```
+
+> Note: with `aaa authentication login default group radius local`, EOS only falls back to the local `admin` account when RADIUS is **unreachable** — a RADIUS *reject* is final. Use `alice`/`bob` (privilege 15) as the day-to-day admins; local `admin` is the break-glass login for when the RADIUS server is down. The `aaa authorization serial-console` line in `configs/P4.eos.cfg` is what makes the RADIUS-returned privilege level apply to console logins (EOS disables console authorization by default).
