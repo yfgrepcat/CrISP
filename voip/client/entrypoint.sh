@@ -10,7 +10,7 @@ fi
 : "${SIP_LOCAL:=0.0.0.0}"
 
 cat > /root/.baresip/accounts << EOF
-<sip:${SIP_USER}@${SIP_SERVER};transport=udp>;auth_pass=${SIP_PASS};regint=60;outbound="sip:${SIP_SERVER};transport=udp";
+<sip:${SIP_USER}@${SIP_SERVER};transport=udp>;auth_pass=${SIP_PASS};regint=3600;outbound="sip:${SIP_SERVER};transport=udp";
 EOF
 
 cat > /root/.baresip/config << EOF

@@ -520,7 +520,7 @@ topology:
       mgmt-ipv4: 172.20.20.32
       env:
         SIP_USER: "1001"
-        SIP_SERVER: "120.0.35.1"
+        SIP_SERVER: "voip.corentinpradier.com"
         SIP_PASS: secret1
       exec:
         - sh -lc 'printf "nameserver 172.20.20.30\n" > /etc/resolv.conf'
@@ -534,7 +534,7 @@ topology:
       mgmt-ipv4: 172.20.20.33
       env:
         SIP_USER: "1002"
-        SIP_SERVER: "120.0.35.1"
+        SIP_SERVER: "voip.corentinpradier.com"
         SIP_PASS: secret2
       exec:
         - sh -lc 'printf "nameserver 172.20.20.30\n" > /etc/resolv.conf'
