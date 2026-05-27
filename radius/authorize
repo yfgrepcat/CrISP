@@ -3,11 +3,9 @@
 # Mounted at /etc/raddb/mods-config/files/authorize.
 
 alice   Cleartext-Password := "alice123"
-        Service-Type = NAS-Prompt-User,
         Arista-AVPair = "shell:priv-lvl=15",
         Reply-Message := "Hello %{User-Name}, authenticated by AS12 RADIUS"
 
 bob     Cleartext-Password := "bob123"
-        Service-Type = NAS-Prompt-User,
         Arista-AVPair = "shell:priv-lvl=15",
         Reply-Message := "Hello %{User-Name}, authenticated by AS12 RADIUS"
