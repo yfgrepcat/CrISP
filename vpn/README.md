@@ -72,8 +72,9 @@ in production.**
 | `203.0.113.0/24`    | `net-isp` — simulated public Internet              | **No** (opaque to the enterprise) |
 | `192.168.1.0/24`    | `net-home` — nomad's home LAN behind the CE        | **No** (opaque to everyone but `home-ce` / CPE) |
 | `120.0.37.0/24`     | Enterprise client LAN on `net-site`                | Yes (passive on PE-site) |
-| `120.0.39.0/24`     | CRISP LAN on `net-crisp`                           | Yes (passive on PE-site) |
-| `10.255.255.0/30`   | Tunnel inner — `.1` nomad CPE, `.2` CRISP side     | Static on PE-site → `ovpn-site` |
+| `120.0.40.0/24`     | CRISP DMZ on `net-crisp` (reverse-proxy/web/PBX)   | Yes (passive on CRISP) |
+| `10.12.30.0/24`     | CRISP private client net                           | Yes (passive on CRISP) |
+| `10.255.255.0/30`   | Tunnel inner — `.1` nomad CPE, `.2` CRISP side     | Static on PE-site **and** CRISP → `ovpn-site` (120.0.40.2) |
 
 ## Why it matches the "pre-configured CPE" philosophy
 
@@ -121,13 +122,17 @@ docker exec clab-enterprise-ospf-bgp-ovpn-site  ping -c 3 10.255.255.1
 
 ### 3. CPE reaches an HQ host
 
-`test-site` lives on the CRISP LAN at `120.0.39.100`. From the CPE:
+The reverse-proxy lives in the CRISP DMZ at `120.0.40.3`. From the CPE:
 
 ```bash
-docker exec clab-enterprise-ospf-bgp-ovpn-nomad ping -c 3 120.0.39.100
+docker exec clab-enterprise-ospf-bgp-ovpn-nomad ping -c 3 120.0.40.3   # DMZ (web/proxy/PBX)
+docker exec clab-enterprise-ospf-bgp-ovpn-nomad ping -c 3 10.12.30.1   # CRISP client-net gateway
 ```
 
-The return path uses the PE-site static `10.255.255.0/30 → 120.0.39.2`.
+The CPE pulls `120.0.40.0/24` and `10.12.30.0/24` over the tunnel (see
+`openvpn/nomad.conf`). The return path uses the CRISP static
+`10.255.255.0/30 → 120.0.40.2` (`ovpn-site` DMZ leg), which sends the reply
+back into the tunnel.
 
 ### 4. Sanity-check the public side stays opaque
 
