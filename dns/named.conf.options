@@ -10,4 +10,9 @@ options {
   allow-recursion { trusted; };
   allow-query { any; };
   dnssec-validation no;
+  forwarders {
+    1.1.1.1;
+    8.8.8.8;
+  };
+  forward first;
 };
