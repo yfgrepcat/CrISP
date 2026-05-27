@@ -1,0 +1,11 @@
+# Minimal user database (FreeRADIUS "files" module).
+# Two test users for the AS12 enterprise RADIUS service.
+# Mounted at /etc/raddb/mods-config/files/authorize.
+
+alice   Cleartext-Password := "alice123"
+        Arista-AVPair = "shell:priv-lvl=15",
+        Reply-Message := "Hello %{User-Name}, authenticated by AS12 RADIUS"
+
+bob     Cleartext-Password := "bob123"
+        Arista-AVPair = "shell:priv-lvl=15",
+        Reply-Message := "Hello %{User-Name}, authenticated by AS12 RADIUS"
