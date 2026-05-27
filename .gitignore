@@ -1,3 +1,7 @@
 topology.clab.yaml.bak
 # Generated folder on deployment of the topology
 clab-enterprise-ospf-bgp
+
+# Local/proprietary virtual router images
+*.qcow2
+*.iso

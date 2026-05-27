@@ -42,12 +42,19 @@ This project focuses on building a multi-site enterprise network and setting up 
 chmod +x set_bridges
 ./set_bridges
 
+# Optional: create the extra bridges for the Arista P4 breakout trunk.
+# Set TRUNK_IFACE when the host NIC is connected to a physical switch trunk.
+TRUNK_IFACE=<your-host-nic> sudo -E ./scripts/create-host-bridges.sh
+
 docker build -t reverse-proxy:latest ./web/reverse-proxy
 docker build -t web:latest ./web
 
 cd voip
 make build
 cd ..
+
+# Build the local Arista vEOS image if vrnetlab/arista_veos:4.31.0F is missing.
+./scripts/build-veos-image.sh
 
 sudo containerlab destroy --topo topology.clab.yaml --cleanup
 sudo containerlab deploy --topo topology.clab.yaml
@@ -57,8 +64,27 @@ sudo containerlab deploy --topo topology.clab.yaml
 
 ```bash
 ./set_bridges
+TRUNK_IFACE=<your-host-nic> sudo -E ./scripts/connect-breakout-trunk.sh
 sudo containerlab destroy --topo topology.clab.yaml --cleanup
 sudo containerlab deploy --topo topology.clab.yaml
+```
+
+## Arista P4 breakout trunk
+
+`P4` runs as Arista vEOS using `configs/P4.eos.cfg`. The default local image tag is `vrnetlab/arista_veos:4.31.0F`; override it during deployment with `VEOS_IMAGE` if needed.
+
+The physical breakout trunk uses Linux VLAN subinterfaces on one host NIC:
+
+| VLAN | Linux interface | Host bridge | Containerlab endpoint |
+| --- | --- | --- | --- |
+| `104` | `clab104` | `br-vlan104` | `P4:Ethernet4` |
+| `121` | `clab121` | `br-vlan121` | `PE-isp:e1-3` |
+| `122` | `clab122` | `br-vlan122` | `PE-isp:e1-4` |
+
+Run:
+
+```bash
+TRUNK_IFACE=<your-host-nic> sudo -E ./scripts/connect-breakout-trunk.sh
 ```
 
 ## Topology overview (Mermaid)
