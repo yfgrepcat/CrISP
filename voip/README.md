@@ -11,8 +11,8 @@ phone-nomad (ext. 1002) ── PE-nomad ──┘
 ## How it works
 
 - `pbx` runs Asterisk with SIP users `1001` and `1002`
-- `phone-site` registers as `1001` to `120.0.35.1`
-- `phone-nomad` registers as `1002` to `120.0.35.1`
+- `phone-site` registers as `1001` to `voip.corentinpradier.com`
+- `phone-nomad` registers as `1002` to `voip.corentinpradier.com`
 
 Topology service links:
 
@@ -27,6 +27,28 @@ Credentials:
 | pbx | - | - |
 | phone-site | 1001 | secret1 |
 | phone-nomad | 1002 | secret2 |
+
+## Registration
+
+Phones register automatically on startup (`regint=60`, re-registers every 60 s).
+
+Check registration status from a phone console:
+
+```text
+/reginfo
+```
+
+Force re-registration:
+
+```text
+/register
+```
+
+Unregister:
+
+```text
+/unregister
+```
 
 ## Build and deploy
 
@@ -52,6 +74,8 @@ make phone-site
 cd voip
 make phone-nomad
 ```
+
+Both phones auto-register on startup. Verify with `/reginfo` before calling.
 
 From `phone-site`, place the call:
 
@@ -79,6 +103,12 @@ Detach from a phone console without stopping it: `Ctrl+C`.
 docker logs clab-enterprise-ospf-bgp-pbx | tail -n 100
 docker exec clab-enterprise-ospf-bgp-phone-site ip addr show eth1
 docker exec clab-enterprise-ospf-bgp-phone-nomad ip addr show eth1
+```
+
+Verify DNS resolution from a phone:
+
+```bash
+docker exec clab-enterprise-ospf-bgp-phone-site getent hosts voip.corentinpradier.com
 ```
 
 Note: audio quality is not the goal in this lab; the smoke test validates SIP registration and call signaling.
