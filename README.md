@@ -1,6 +1,6 @@
-# Enterprise Network
+# CrISP - A Container-running Internet Service Provider
 
-![Logo](rsc/logo.png)
+![Logo](rsc/crisp.png)
 
 > Multi-site enterprise network project with internal routing, interconnection with other autonomous systems, and shared network services.
 
@@ -101,59 +101,139 @@ Run:
 TRUNK_IFACE=<your-host-nic> sudo -E ./scripts/connect-breakout-trunk.sh
 ```
 
-## Topology overview (Mermaid)
+## Topology overview
+
+### Physical topology
+
+The cabling exactly as wired in `topology.clab.yaml`. Hexagons are host bridges (shared L2 segments); link labels are the subnet (or host octet) on that segment.
 
 ```mermaid
+%%{init: {'theme': 'base', 'themeVariables': {'fontSize': '16px'}}}%%
+flowchart TB
+  subgraph CORE["Core - OSPF backbone (120.0.32.0/20)"]
+    direction LR
+    P1["P1<br/>SR Linux"]
+    P2["P2<br/>SR Linux"]
+    P3["P3<br/>SR Linux"]
+    P4["P4<br/>Arista vEOS"]
+    P1 ---|"120.0.33.0/31"| P2
+    P1 ---|"120.0.33.2/31"| P3
+    P1 ---|"120.0.33.4/31"| P4
+    P2 ---|"120.0.33.6/31"| P3
+    P2 ---|"120.0.33.8/31"| P4
+    P3 ---|"120.0.33.10/31"| P4
+  end
+
+  %% --- services directly on the core ---
+  RP["reverse-proxy<br/>120.0.34.9"]
+  WEB["web-server<br/>192.168.1.2"]
+  DNS["dns-as12<br/>120.0.34.7"]
+  RADIUS["radius<br/>120.0.34.11"]
+  DHCP["dhcp<br/>120.0.36.10"]
+  PBX["pbx<br/>120.0.35.1"]
+  P1 ---|"120.0.34.8/31"| RP
+  RP ---|"192.168.1.0/24"| WEB
+  P2 ---|"120.0.34.6/31"| DNS
+  P2 ---|"120.0.34.10/31"| RADIUS
+  P3 ---|"120.0.36.0/24"| DHCP
+  P4 ---|"120.0.35.0/31"| PBX
+
+  %% --- PE routers ---
+  P1 ---|"120.0.34.0/31"| PEisp["PE-isp"]
+  P2 ---|"120.0.34.2/31"| PEnomad["PE-nomad"]
+  P3 ---|"120.0.34.4/31"| PEsite["PE-site"]
+
+  %% --- HQ site (net-site) ---
+  subgraph HQ["Enterprise HQ"]
+    SITEC["SITE-CLIENT"]
+    PHs["phone-site<br/>120.0.35.3"]
+    NETSITE{{"net-site<br/>10.12.20.0/24"}}
+    OVPNs["ovpn-site<br/>.2 + 203.0.113.50"]
+    TEST["test-site<br/>.100"]
+  end
+  PEsite ---|"120.0.37.0/24"| SITEC
+  PEsite ---|"120.0.35.2/31"| PHs
+  PEsite ---|".1"| NETSITE
+  NETSITE ---|".2"| OVPNs
+  NETSITE ---|".100"| TEST
+
+  %% --- residential access ---
+  subgraph RES["Residential access"]
+    RBOX["RESIDENTIAL-BOX"]
+    NOMADC["NOMAD-CLIENT"]
+    PHn["phone-nomad<br/>120.0.35.5"]
+  end
+  PEnomad ---|"120.0.38.0/24"| RBOX
+  RBOX --- NOMADC
+  PEnomad ---|"120.0.35.4/31"| PHn
+
+  %% --- Internet + nomad home ---
+  subgraph NET["Public Internet + nomad home"]
+    NETISP{{"net-isp<br/>203.0.113.0/24"}}
+    HOMECE["home-ce (NAT)<br/>.20 + 192.168.1.1"]
+    NETHOME{{"net-home<br/>192.168.1.0/24"}}
+    OVPNn["ovpn-nomad<br/>192.168.1.10"]
+  end
+  PEisp ---|"203.0.113.1"| NETISP
+  OVPNs ---|"203.0.113.50"| NETISP
+  NETISP ---|"203.0.113.20"| HOMECE
+  HOMECE ---|"192.168.1.1"| NETHOME
+  NETHOME ---|"192.168.1.10"| OVPNn
+
+  %% --- external breakout trunk ---
+  subgraph TRUNK["External breakout trunk"]
+    BR104{{"br-vlan104<br/>VLAN 104"}}
+    BR121{{"br-vlan121<br/>VLAN 121"}}
+    BR122{{"br-vlan122<br/>VLAN 122"}}
+  end
+  P4 --- BR104
+  PEisp --- BR121
+  PEisp --- BR122
+```
+
+### Services
+
+Logical view of who consumes each service. Solid arrows are data paths, dotted arrows are relayed/control traffic.
+
+```mermaid
+%%{init: {'theme': 'base', 'themeVariables': {'fontSize': '16px'}}}%%
 flowchart LR
-	CORE["Core OSPF backbone<br/>P1-P4<br/>120.0.32.0/20"]
+  %% --- consumers ---
+  SITEC["SITE-CLIENT<br/>HQ 120.0.37.0/24"]
+  NOMADC["NOMAD-CLIENT<br/>residential"]
+  PHs["phone-site<br/>120.0.35.3"]
+  PHn["phone-nomad<br/>120.0.35.5"]
+  ADMIN["admin user<br/>alice / bob"]
 
-	PESITE["PE-site<br/>120.0.37.1"]
-	PENOMAD["PE-nomad<br/>120.0.38.1"]
-	PEISP["PE-isp<br/>203.0.113.1"]
+  %% --- services ---
+  subgraph SVC["AS12 shared services"]
+    DHCP["DHCP dnsmasq<br/>120.0.36.10"]
+    DNS["DNS BIND9<br/>120.0.34.7"]
+    PBX["VoIP PBX Asterisk<br/>voip.corentinpradier.com<br/>120.0.35.1"]
+    RP["reverse-proxy<br/>120.0.34.9"]
+    WEB["web-server<br/>192.168.1.2"]
+    RADIUS["RADIUS FreeRADIUS<br/>120.0.34.11"]
+  end
 
-	DNS["DNS (BIND9)<br/>dns-as12<br/>120.0.34.7"]
-	DHCP["DHCP (dnsmasq)<br/>120.0.36.10"]
-	RP["Reverse proxy / web<br/>172.20.20.34"]
-	PBX["VoIP PBX (Asterisk)<br/>120.0.35.1"]
+  SITEC -. "DHCP (PE-site relay)" .-> DHCP
+  NOMADC -. "DHCP (PE-nomad relay)" .-> DHCP
+  SITEC -- "DNS site view" --> DNS
+  NOMADC -- "DNS nomad view" --> DNS
+  NOMADC -- "HTTP" --> RP
+  RP --> WEB
+  PHs -- "SIP" --> PBX
+  PHn -- "SIP" --> PBX
+  ADMIN -- "console login" --> P4["P4 (NAS)"]
+  P4 -- "Access-Request" --> RADIUS
+  RADIUS -- "Accept priv-lvl=15" --> P4
 
-	SITEC["SITE-CLIENT<br/>DHCP: 120.0.37.0/24"]
-	NOMADC["NOMAD-CLIENT<br/>DHCP: 120.0.38.0/24"]
-	RESBOX["RESIDENTIAL-BOX<br/>WAN DHCP 120.0.38.x<br/>LAN 192.168.1.1/24"]
-
-	PHONE1["phone-site<br/>120.0.35.3"]
-	PHONE2["phone-nomad<br/>120.0.35.5"]
-
-	OVPNSITE["ovpn-site<br/>10.12.20.2 + 203.0.113.50"]
-	OVPNNOMAD["ovpn-nomad<br/>192.168.1.10"]
-	HOMECE["home-ce (NAT)<br/>203.0.113.20 / 192.168.1.1"]
-	TESTSITE["test-site<br/>10.12.20.100"]
-
-	CORE --- PESITE
-	CORE --- PENOMAD
-	CORE --- PEISP
-	CORE --- DNS
-	CORE --- DHCP
-	CORE --- RP
-	CORE --- PBX
-
-	PESITE --> SITEC
-	PENOMAD --> NOMADC
-	PENOMAD --> RESBOX
-
-	PESITE -. DHCP relay .-> DHCP
-	PENOMAD -. DHCP relay .-> DHCP
-
-	PESITE --- PHONE1
-	PENOMAD --- PHONE2
-	PBX --- PHONE1
-	PBX --- PHONE2
-
-	PESITE --- OVPNSITE
-	OVPNSITE --- TESTSITE
-	PEISP --- OVPNSITE
-	PEISP --- HOMECE
-	HOMECE --- OVPNNOMAD
-	OVPNNOMAD <-. VPN tunnel 10.255.255.1/30 <br/> 10.255.255.2/30 .-> OVPNSITE
+  %% --- site-to-nomad VPN overlay ---
+  subgraph VPN["Site-to-nomad VPN (10.255.255.0/30)"]
+    OVPNn["ovpn-nomad (CPE)<br/>192.168.1.10"]
+    OVPNs["ovpn-site (HQ)<br/>203.0.113.50"]
+  end
+  OVPNn <-- "OpenVPN UDP/1194" --> OVPNs
+  OVPNs -- "reaches HQ LAN 10.12.20.0/24" --> HQLAN["HQ hosts<br/>test-site 10.12.20.100"]
 ```
 
 How it works (short version):
