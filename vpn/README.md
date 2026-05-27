@@ -2,9 +2,9 @@
 
 This subtree contains the OpenVPN pieces of the lab. The model is a
 **pre-configured nomad CPE** that a user plugs into their home internet box
-(here: a NAT'd CE we simulate with `home-ce`). The CPE dials the **HQ
+(here: a NAT'd CE we simulate with `home-ce`). The CPE dials the **CRISP
 concentrator** sitting in a DMZ at a stable public IP. The enterprise IGP
-does **not** carry the nomad's network.
+does **not** carry the nomad's home network.
 
 ## Layout
 
@@ -28,9 +28,9 @@ flowchart TB
     subgraph ent["🏢 Enterprise OSPF (P1..P4 + PE-site)"]
         core["Core P1..P4<br/>full mesh"]
         pesite["PE-site"]
-        nsite(("net-site<br/>10.12.20.0/24"))
-        siteint["ovpn-site:eth1<br/>10.12.20.2/24"]
-        testsite["test-site<br/>10.12.20.100"]
+        nsite(("net-site<br/>120.0.37.0/24"))
+        siteint["ovpn-site:eth1<br/>120.0.39.2/24"]
+        testsite["test-site<br/>120.0.39.100/24"]
         peisp -. OSPF .- core
         core --- pesite --- nsite
         nsite --- siteint
@@ -71,8 +71,9 @@ in production.**
 |---------------------|----------------------------------------------------|----------|
 | `203.0.113.0/24`    | `net-isp` — simulated public Internet              | **No** (opaque to the enterprise) |
 | `192.168.1.0/24`    | `net-home` — nomad's home LAN behind the CE        | **No** (opaque to everyone but `home-ce` / CPE) |
-| `10.12.20.0/24`     | HQ LAN on `net-site`                               | Yes (passive on PE-site) |
-| `10.255.255.0/30`   | Tunnel inner — `.1` nomad CPE, `.2` HQ side        | Static on PE-site → `ovpn-site` |
+| `120.0.37.0/24`     | Enterprise client LAN on `net-site`                | Yes (passive on PE-site) |
+| `120.0.39.0/24`     | CRISP LAN on `net-crisp`                           | Yes (passive on PE-site) |
+| `10.255.255.0/30`   | Tunnel inner — `.1` nomad CPE, `.2` CRISP side     | Static on PE-site → `ovpn-site` |
 
 ## Why it matches the "pre-configured CPE" philosophy
 
@@ -120,13 +121,13 @@ docker exec clab-enterprise-ospf-bgp-ovpn-site  ping -c 3 10.255.255.1
 
 ### 3. CPE reaches an HQ host
 
-`test-site` lives on the HQ LAN at `10.12.20.100`. From the CPE:
+`test-site` lives on the CRISP LAN at `120.0.39.100`. From the CPE:
 
 ```bash
-docker exec clab-enterprise-ospf-bgp-ovpn-nomad ping -c 3 10.12.20.100
+docker exec clab-enterprise-ospf-bgp-ovpn-nomad ping -c 3 120.0.39.100
 ```
 
-The return path uses the PE-site static `10.255.255.0/30 → 10.12.20.2`.
+The return path uses the PE-site static `10.255.255.0/30 → 120.0.39.2`.
 
 ### 4. Sanity-check the public side stays opaque
 

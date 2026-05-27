@@ -2,11 +2,11 @@
 
 ## Architecture overview
 
-The DNS server is `dns-as12` (BIND9) connected to router `P2`.
+The DNS server is `dns-as12` (BIND9) connected to the P1 service LAN.
 
 - DNS container name: `clab-enterprise-ospf-bgp-dns-as12`
 - DNS mgmt IP: `172.20.20.30`
-- DNS service IP: `120.0.34.7`
+- DNS service IP: `120.0.36.1/31`
 
 The BIND config is split by views in `dns/views.conf`.
 
@@ -15,6 +15,7 @@ The BIND config is split by views in `dns/views.conf`.
 View selection depends on source IP (client subnet):
 
 - Enterprise ACL: `120.0.37.0/24`
+- CRISP ACL: `120.0.39.0/24`
 - Residential ACL: `120.0.38.0/24`
 - Default view: all other addresses
 
@@ -23,9 +24,9 @@ This allows us to control whether a client can resolve the intranet website or n
 
 Our services are under the domain `corentinpradier.com`:
 
-- `extranet.corentinpradier.com` -> `172.20.20.34` (public + enterprise/residential)
-- `intranet.corentinpradier.com` -> `172.20.20.34` (enterprise/residential only) (the website content differs between extranet and intranet)
-- `voip.corentinpradier.com` -> `120.0.35.1`
+- `extranet.corentinpradier.com` -> `120.0.40.3` (public + enterprise/CRISP)
+- `intranet.corentinpradier.com` -> `120.0.40.3` (enterprise/CRISP only) (the website content differs between extranet and intranet)
+- `voip.corentinpradier.com` -> `120.0.40.5`
 
 ## Quick rebuild
 
@@ -142,8 +143,8 @@ docker exec clab-enterprise-ospf-bgp-dns-as12 ip link add res0 type dummy
 docker exec clab-enterprise-ospf-bgp-dns-as12 ip addr add 120.0.38.10/24 dev res0
 docker exec clab-enterprise-ospf-bgp-dns-as12 ip link set res0 up
 
-docker exec clab-enterprise-ospf-bgp-dns-as12 dig -b 120.0.37.10 @120.0.34.7 intranet.corentinpradier.com
-docker exec clab-enterprise-ospf-bgp-dns-as12 dig -b 120.0.38.10 @120.0.34.7 intranet.corentinpradier.com
+docker exec clab-enterprise-ospf-bgp-dns-as12 dig -b 120.0.37.10 @120.0.36.1 intranet.corentinpradier.com
+docker exec clab-enterprise-ospf-bgp-dns-as12 dig -b 120.0.38.10 @120.0.36.1 intranet.corentinpradier.com
 ```
 
 Expected: DNS resolution for intranet works when the source address is in the `120.0.37.0/24` and `120.0.38.0/24` ranges, which match the ACLs in `named.conf.options`:
@@ -159,10 +160,10 @@ docker exec clab-enterprise-ospf-bgp-dns-as12 ip link add res0 type dummy
 docker exec clab-enterprise-ospf-bgp-dns-as12 ip addr add 120.0.38.10/24 dev res0
 docker exec clab-enterprise-ospf-bgp-dns-as12 ip link set res0 up
 
-docker exec clab-enterprise-ospf-bgp-dns-as12 dig -b 120.0.37.10 @120.0.34.7 intranet.corentinpradier.com
-docker exec clab-enterprise-ospf-bgp-dns-as12 dig -b 120.0.38.10 @120.0.34.7 intranet.corentinpradier.com
+docker exec clab-enterprise-ospf-bgp-dns-as12 dig -b 120.0.37.10 @120.0.36.1 intranet.corentinpradier.com
+docker exec clab-enterprise-ospf-bgp-dns-as12 dig -b 120.0.38.10 @120.0.36.1 intranet.corentinpradier.com
 
-; <<>> DiG 9.21.21 <<>> -b 120.0.37.10 @120.0.34.7 intranet.corentinpradier.com
+; <<>> DiG 9.21.21 <<>> -b 120.0.37.10 @120.0.36.1 intranet.corentinpradier.com
 ; (1 server found)
 ;; global options: +cmd
 ;; Got answer:
@@ -179,12 +180,12 @@ docker exec clab-enterprise-ospf-bgp-dns-as12 dig -b 120.0.38.10 @120.0.34.7 int
 intranet.corentinpradier.com. 3600 IN   A       172.20.20.34
 
 ;; Query time: 1 msec
-;; SERVER: 120.0.34.7#53(120.0.34.7) (UDP)
+;; SERVER: 120.0.36.1#53(120.0.36.1) (UDP)
 ;; WHEN: Wed May 27 13:18:00 UTC 2026
 ;; MSG SIZE  rcvd: 101
 
 
-; <<>> DiG 9.21.21 <<>> -b 120.0.38.10 @120.0.34.7 intranet.corentinpradier.com
+; <<>> DiG 9.21.21 <<>> -b 120.0.38.10 @120.0.36.1 intranet.corentinpradier.com
 ; (1 server found)
 ;; global options: +cmd
 ;; Got answer:
@@ -201,7 +202,7 @@ intranet.corentinpradier.com. 3600 IN   A       172.20.20.34
 intranet.corentinpradier.com. 3600 IN   A       172.20.20.34
 
 ;; Query time: 1 msec
-;; SERVER: 120.0.34.7#53(120.0.34.7) (UDP)
+;; SERVER: 120.0.36.1#53(120.0.36.1) (UDP)
 ;; WHEN: Wed May 27 13:18:00 UTC 2026
 ;; MSG SIZE  rcvd: 101
 ```
@@ -216,28 +217,37 @@ docker exec clab-enterprise-ospf-bgp-dns-as12 ip link del res0
 ## Realistic client-side checks
 
 In this test, we are using containers that receive IPs from DHCP. Those addresses can resolve the intranet.
-This test requires the DHCP setup to work. The first command is run in `SITE-CLIENT` (`120.0.37.0/24`), and the second command is run from `NOMAD-CLIENT`, which goes out through `RESIDENTIAL-BOX`, which gets a public address via DHCP (`120.0.38.0/24`). For that last case, that is why we ask the residential box to resolve it.
+This test requires the DHCP setup to work. The first command is run in `SITE-CLIENT` (`120.0.37.0/24`), and the second command is run from `CRISP-CLIENT`, which gets its address from the CRISP private client net on `10.12.30.0/24`.
 
 ```bash
-docker exec clab-enterprise-ospf-bgp-SITE-CLIENT sh -lc 'nslookup extranet.corentinpradier.com 120.0.34.7'
-docker exec clab-enterprise-ospf-bgp-NOMAD-CLIENT sh -lc 'nslookup intranet.corentinpradier.com 192.168.1.1'
+docker exec clab-enterprise-ospf-bgp-SITE-CLIENT sh -lc 'nslookup extranet.corentinpradier.com 120.0.36.1'
+docker exec clab-enterprise-ospf-bgp-CRISP-CLIENT sh -lc 'nslookup intranet.corentinpradier.com 120.0.36.1'
 ```
 
 Expected:
 
 ```bash
-t70n@t70n-workstation:~/Documents/enterprise-network$ docker exec clab-enterprise-ospf-bgp-SITE-CLIENT sh -lc 'nslookup extranet.corentinpradier.com 120.0.34.7'
-Server:         120.0.34.7
-Address:        120.0.34.7:53
+t70n@t70n-workstation:~/Documents/enterprise-network$ docker exec clab-enterprise-ospf-bgp-SITE-CLIENT sh -lc 'nslookup extranet.corentinpradier.com 120.0.36.1'
+Server:         120.0.36.1
+Address:        120.0.36.1:53
 
 Name:   extranet.corentinpradier.com
 Address: 172.20.20.34
 
 
-t70n@t70n-workstation:~/Documents/enterprise-network$ docker exec clab-enterprise-ospf-bgp-NOMAD-CLIENT sh -lc 'nslookup intranet.corentinpradier.com 120.0.34.7'
-Server:         120.0.34.7
-Address:        120.0.34.7:53
+t70n@t70n-workstation:~/Documents/enterprise-network$ docker exec clab-enterprise-ospf-bgp-CRISP-CLIENT sh -lc 'nslookup intranet.corentinpradier.com 120.0.36.1'
+Server:         120.0.36.1
+Address:        120.0.36.1:53
 
 Name:   intranet.corentinpradier.com
 Address: 172.20.20.34
 ```
+
+
+
+docker exec clab-enterprise-ospf-bgp-CRISP-CLIENT ip addr show eth1
+docker exec clab-enterprise-ospf-bgp-CRISP-CLIENT ip route
+docker exec clab-enterprise-ospf-bgp-CRISP-CLIENT ping -c 3 120.0.40.10
+docker exec clab-enterprise-ospf-bgp-CRISP-CLIENT ping -c 3 120.0.36.1
+docker exec clab-enterprise-ospf-bgp-CRISP-CLIENT nslookup intranet.corentinpradier.com 120.0.36.1
+docker exec clab-enterprise-ospf-bgp-CRISP-CLIENT nslookup voip.corentinpradier.com 120.0.36.1

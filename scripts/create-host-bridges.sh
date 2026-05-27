@@ -3,8 +3,12 @@ set -euo pipefail
 
 BRIDGES=(
   net-isp
+  dns-net
+  dhcp-net
   net-nomad
   net-site
+  net-crisp
+  net-crisp-cli
   br-vlan104
   br-vlan121
   br-vlan122

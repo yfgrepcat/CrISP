@@ -3,30 +3,30 @@
 Simple SIP call flow with one Asterisk PBX and 2 softphones.
 
 ```
-phone-site  (ext. 1001) ── PE-site  ──┐
-                                       ├── P4 ── pbx (Asterisk :5060)
-phone-nomad (ext. 1002) ── PE-nomad ──┘
+phone-crisp1 (ext. 1001) ── CRISP client net ──┐
+                                                ├── CRISP ── pbx (Asterisk :5060)
+phone-crisp2 (ext. 1002) ── CRISP client net ──┘
 ```
 
 ## How it works
 
 - `pbx` runs Asterisk with SIP users `1001` and `1002`
-- `phone-site` registers as `1001` to `voip.corentinpradier.com`
-- `phone-nomad` registers as `1002` to `voip.corentinpradier.com`
+- `phone-crisp1` registers as `1001` to `voip.corentinpradier.com`
+- `phone-crisp2` registers as `1002` to `voip.corentinpradier.com`
 
 Topology service links:
 
-- `pbx` on `120.0.35.1/31` (toward `P4`)
-- `phone-site` on `120.0.35.3/31` via `PE-site`
-- `phone-nomad` on `120.0.35.5/31` via `PE-nomad`
+- `pbx` on `120.0.40.5/24` in the CRISP DMZ
+- `phone-crisp1` on `10.12.30.101/24` via `CRISP`
+- `phone-crisp2` on `10.12.30.102/24` via `CRISP`
 
 Credentials:
 
 | Node | SIP ext | Password |
 |---|---|---|
 | pbx | - | - |
-| phone-site | 1001 | secret1 |
-| phone-nomad | 1002 | secret2 |
+| phone-crisp1 | 1001 | secret1 |
+| phone-crisp2 | 1002 | secret2 |
 
 ## Registration
 
@@ -67,23 +67,23 @@ Open both phone consoles in separate terminals:
 
 ```bash
 cd voip
-make phone-site
+make phone-crisp1
 ```
 
 ```bash
 cd voip
-make phone-nomad
+make phone-crisp2
 ```
 
 Both phones auto-register on startup. Verify with `/reginfo` before calling.
 
-From `phone-site`, place the call:
+From `phone-crisp1`, place the call:
 
 ```text
 /dial 1002
 ```
 
-From `phone-nomad`, answer:
+From `phone-crisp2`, answer:
 
 ```text
 /accept
@@ -101,14 +101,14 @@ Detach from a phone console without stopping it: `Ctrl+C`.
 
 ```bash
 docker logs clab-enterprise-ospf-bgp-pbx | tail -n 100
-docker exec clab-enterprise-ospf-bgp-phone-site ip addr show eth1
-docker exec clab-enterprise-ospf-bgp-phone-nomad ip addr show eth1
+docker exec clab-enterprise-ospf-bgp-phone-crisp1 ip addr show eth1
+docker exec clab-enterprise-ospf-bgp-phone-crisp2 ip addr show eth1
 ```
 
 Verify DNS resolution from a phone:
 
 ```bash
-docker exec clab-enterprise-ospf-bgp-phone-site getent hosts voip.corentinpradier.com
+docker exec clab-enterprise-ospf-bgp-phone-crisp1 getent hosts voip.corentinpradier.com
 ```
 
 Note: audio quality is not the goal in this lab; the smoke test validates SIP registration and call signaling.

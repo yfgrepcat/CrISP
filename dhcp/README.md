@@ -2,24 +2,51 @@
 
 ## Architecture overview
 
-The lab uses a central DHCP server and DHCP relay on edge routers.
+The lab uses a central DHCP server on the P1 service LAN and a DHCP relay on the nomad edge.
 
 - Central DHCP server: `clab-enterprise-ospf-bgp-dhcp`
-- Central DHCP service IP: `120.0.36.10/24` on `eth1`
-- Central DHCP gateway: `120.0.36.1` (router `P3`)
+- Central DHCP service IP: `120.0.36.3/31` on `eth1`
+- Central DHCP gateway: `120.0.36.2` (router `P1`)
 
-The central container runs `dnsmasq` with 3 scopes:
+The direct client segment on PE-nomad is `120.0.38.0/24` behind `ethernet-1/4.0`:
 
-- Local service segment pool: `120.0.36.100-120.0.36.200/24`
-- Relayed enterprise pool: `120.0.37.100-120.0.37.200/24`
+- `PE-nomad` service IP: `120.0.38.1/24`
+- DHCP relay target: `120.0.36.3`
+- Client address pool: `120.0.38.100-120.0.38.200/24`
+- DNS handed to clients: `120.0.36.1`
+
+The central container runs `dnsmasq` with 1 scope:
+
 - Relayed private pool: `120.0.38.100-120.0.38.200/24`
 
-Relays are configured on:
+Relay is configured on:
 
-- `PE-site` for `120.0.37.0/24` (`ethernet-1/4.0`)
 - `PE-nomad` for `120.0.38.0/24` (`ethernet-1/4.0`)
 
-Both relay to `120.0.36.10` and set `giaddr` so `dnsmasq` picks the right pool.
+It relays to `120.0.36.3` and sets `giaddr` so `dnsmasq` picks the right pool.
+
+## CRISP DHCP service
+
+CRISP also has a small DHCP server in the DMZ for the private client net.
+
+- DHCP container: `clab-enterprise-ospf-bgp-dhcp-crisp`
+- DHCP service IP: `120.0.40.10/24` on `eth1`
+- DMZ gateway: `120.0.40.1` (router `CRISP`)
+- Client subnet served through relay: `10.12.30.0/24`
+- Lease pool: `10.12.30.100-10.12.30.200/24`
+- Router handed to clients: `10.12.30.1`
+- DNS handed to clients: `120.0.36.1`
+
+The CRISP router relays DHCP on `e1-3` from the private client net to the DMZ server at `120.0.40.10`.
+
+Quick checks:
+
+```bash
+docker exec clab-enterprise-ospf-bgp-CRISP-CLIENT ip addr show eth1
+docker exec clab-enterprise-ospf-bgp-CRISP-CLIENT ip route
+docker exec clab-enterprise-ospf-bgp-CRISP-CLIENT ping -c 3 120.0.40.10
+docker exec clab-enterprise-ospf-bgp-dhcp-crisp cat /var/lib/misc/dnsmasq.leases
+```
 
 ## Residential box behavior
 
@@ -40,7 +67,7 @@ Check active leases on the central server:
 docker exec clab-enterprise-ospf-bgp-dhcp cat /var/lib/misc/dnsmasq.leases
 ```
 
-If relayed clients fail to obtain leases, verify DHCP relay is configured on the routers and forwarding to `120.0.36.10`.
+If relayed clients fail to obtain leases, verify DHCP relay is configured on the routers and forwarding to `120.0.36.3`.
 
 ## End-to-end test procedure
 
@@ -62,10 +89,10 @@ Expected result: `SITE-CLIENT`, `NOMAD-CLIENT`, `RESIDENTIAL-BOX`, and `dhcp` ap
 3. Check relay clients receive addresses and routes.
 
 ```bash
-docker exec clab-enterprise-ospf-bgp-SITE-CLIENT ip addr show eth1
-docker exec clab-enterprise-ospf-bgp-SITE-CLIENT ip route
 docker exec clab-enterprise-ospf-bgp-NOMAD-CLIENT ip addr show eth1
 docker exec clab-enterprise-ospf-bgp-NOMAD-CLIENT ip route
+docker exec clab-enterprise-ospf-bgp-SITE-CLIENT ip addr show eth1
+docker exec clab-enterprise-ospf-bgp-SITE-CLIENT ip route
 ```
 
 4. Validate central DHCP process and logs.
@@ -83,7 +110,16 @@ docker exec clab-enterprise-ospf-bgp-dhcp cat /var/lib/misc/dnsmasq.leases
 docker exec clab-enterprise-ospf-bgp-RESIDENTIAL-BOX ip addr show eth1
 docker exec clab-enterprise-ospf-bgp-RESIDENTIAL-BOX ip addr show eth2
 docker exec clab-enterprise-ospf-bgp-RESIDENTIAL-BOX ip route
-docker exec clab-enterprise-ospf-bgp-NOMAD-CLIENT ping -c 3 120.0.36.10
+docker exec clab-enterprise-ospf-bgp-NOMAD-CLIENT ping -c 3 120.0.36.3
+```
+
+6. Validate DNS reachability from the direct PE-nomad client.
+
+```bash
+docker exec clab-enterprise-ospf-bgp-NOMAD-CLIENT nslookup intranet.corentinpradier.com 120.0.36.1
+docker exec clab-enterprise-ospf-bgp-NOMAD-CLIENT nslookup voip.corentinpradier.com 120.0.36.1
+docker exec clab-enterprise-ospf-bgp-NOMAD-CLIENT ping -c 3 120.0.36.1
+docker exec clab-enterprise-ospf-bgp-NOMAD-CLIENT ping -c 3 120.0.36.3
 ```
 
 ## Residential lease inspection
