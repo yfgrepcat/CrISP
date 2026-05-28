@@ -238,9 +238,9 @@ How it works (short version):
 
 - `P1-P4` is the transport core; services are attached behind PE routers or directly on core edges.
 - DNS (`120.0.36.1`) and DHCP (`120.0.36.3`) sit on P1 as separate /31 links; DHCP serves the relayed nomad pool, and `PE-nomad` relays residential clients.
-- DNS (`120.0.36.1`) answers with different views depending on client subnet (`120.0.37.0/24`, `10.12.30.0/24`, or `120.0.38.0/24`).
-- VoIP phones `phone-crisp1` and `phone-crisp2` register to PBX (`120.0.40.5`) and call each other across the CRISP client net.
-- VPN links nomad side to CRISP: `ovpn-nomad` reaches `ovpn-site` over public `203.0.113.0/24`, then into the CRISP DMZ (`120.0.40.0/24`).
+- DNS (`120.0.36.1`) answers with different views depending on client subnet (`10.12.30.0/24` and the VPN CPE `192.168.1.10/32` for intranet, `120.0.38.0/24` for residential, or default/public for everyone else).
+- VoIP phones `phone-crisp1` and `phone-crisp2` register to PBX (`120.0.41.5`) and call each other across the CRISP client net.
+- VPN links nomad side to CRISP: `ovpn-nomad` reaches `ovpn-site` over public `203.0.113.0/24`, then into the CRISP DMZ (`120.0.40.0/24`) and the protected DNS endpoint (`120.0.36.1`).
 - RADIUS (`120.0.34.11`) authenticates router logins; the Arista `P4` is the NAS and maps authenticated users (`alice`/`bob`) to privilege level 15.
 
 ### PE-site / CRISP topology
@@ -251,14 +251,16 @@ Exact interface addressing for the CRISP head router, its DMZ, and its private c
 | --- | --- |
 | `P3:e1-10` ↔ `PE-site:e1-1` | `P3 = 120.0.34.4/31`, `PE-site = 120.0.34.5/31` |
 | `PE-site:e1-4` ↔ `CRISP:e1-1` | `PE-site = 120.0.39.0/31`, `CRISP = 120.0.39.1/31` |
-| `CRISP:e1-2` ↔ `net-crisp` | `CRISP = 120.0.40.1/24`, `ovpn-site = 120.0.40.2/24`, `reverse-proxy = 120.0.40.3/24`, `web-server = 120.0.40.4/24`, `pbx = 120.0.40.5/24`, `dhcp-crisp = 120.0.40.10/24` |
-| `CRISP:e1-3` ↔ `net-crisp-client` | `CRISP = 10.12.30.1/24`, `CRISP-CLIENT = DHCP 10.12.30.100-200/24`, `phone-crisp1 = 10.12.30.101/24`, `phone-crisp2 = 10.12.30.102/24` |
+| `CRISP:e1-2` ↔ `net-crisp-dmz` | `CRISP = 120.0.40.1/24`, `ovpn-site = 120.0.40.2/24`, `reverse-proxy = 120.0.40.3/24`, `web-server = 120.0.40.4/24` |
+| `CRISP:e1-3` ↔ `net-crisp-srv` | `CRISP = 120.0.41.1/24`, `pbx = 120.0.41.5/24`, `dhcp-crisp = 120.0.41.10/24` |
+| `CRISP:e1-4` ↔ `net-crisp-client` | `CRISP = 10.12.30.1/24`, `CRISP-CLIENT = DHCP 10.12.30.100-200/24`, `phone-crisp1 = 10.12.30.101/24`, `phone-crisp2 = 10.12.30.102/24` |
 
 What this means:
 
 - `PE-site` is only the enterprise edge router; it reaches `CRISP` over the `120.0.39.0/31` transit link.
 - `CRISP` is the head router for the CRISP site.
-- The DMZ on `120.0.40.0/24` hosts `ovpn-site`, `reverse-proxy`, `web-server`, `pbx`, and the CRISP DHCP server.
+- The DMZ on `120.0.40.0/24` hosts `ovpn-site`, `reverse-proxy`, and `web-server`.
+- The private services VLAN on `120.0.41.0/24` hosts `pbx` and the CRISP DHCP server.
 - The private client net on `10.12.30.0/24` hosts the CRISP client PC and the two softphones.
 - `dhcp-crisp` in the DMZ hands out `10.12.30.100-200/24` to the client net, with gateway `10.12.30.1` and DNS `120.0.36.1`.
 

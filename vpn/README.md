@@ -30,11 +30,13 @@ flowchart TB
         pesite["PE-site"]
         nsite(("net-site<br/>120.0.37.0/24"))
         siteint["ovpn-site:eth1<br/>120.0.39.2/24"]
-        testsite["test-site<br/>120.0.39.100/24"]
+      dmvlnet(("net-crisp-dmz<br/>120.0.40.0/24"))
+      srvnet(("net-crisp-srv<br/>120.0.41.0/24"))
         peisp -. OSPF .- core
         core --- pesite --- nsite
         nsite --- siteint
-        nsite --- testsite
+      nsite --- dmvlnet
+      nsite --- srvnet
     end
 
     ce --- nisp
@@ -47,7 +49,8 @@ flowchart TB
     classDef host fill:#dcfce7,stroke:#15803d,color:#000;
     class neth,nisp,nsite bridge;
     class peisp,core,pesite,ce router;
-    class nomad,sitepub,siteint,testsite host;
+    class nomad,sitepub,siteint host;
+    class dmvlnet,srvnet bridge;
 ```
 
 ## Files
@@ -72,7 +75,8 @@ in production.**
 | `203.0.113.0/24`    | `net-isp` — simulated public Internet              | **No** (opaque to the enterprise) |
 | `192.168.1.0/24`    | `net-home` — nomad's home LAN behind the CE        | **No** (opaque to everyone but `home-ce` / CPE) |
 | `120.0.37.0/24`     | Enterprise client LAN on `net-site`                | Yes (passive on PE-site) |
-| `120.0.40.0/24`     | CRISP DMZ on `net-crisp` (reverse-proxy/web/PBX)   | Yes (passive on CRISP) |
+| `120.0.40.0/24`     | CRISP DMZ on `net-crisp-dmz` (reverse-proxy/web)   | Yes (passive on CRISP) |
+| `120.0.41.0/24`     | CRISP private services VLAN on `net-crisp-srv`     | Yes (passive on CRISP) |
 | `10.12.30.0/24`     | CRISP private client net                           | Yes (passive on CRISP) |
 | `10.255.255.0/30`   | Tunnel inner — `.1` nomad CPE, `.2` CRISP side     | Static on PE-site **and** CRISP → `ovpn-site` (120.0.40.2) |
 
@@ -97,9 +101,9 @@ From the repo root (one level up):
 sudo containerlab deploy --topo topology.clab.yaml
 ```
 
-This builds the bridges (`net-isp`, `net-site`, `net-home`), brings up the
+This builds the bridges (`net-isp`, `net-site`, `net-home`, `net-crisp-dmz`, `net-crisp-srv`), brings up the
 SR Linux routers, the Linux nodes (`ovpn-nomad`, `ovpn-site`, `home-ce`,
-`test-site`, …) and runs the `exec` lines that install `openvpn` / `iptables`
+`dhcp-crisp`, `pbx`, …) and runs the `exec` lines that install `openvpn` / `iptables`
 and start the tunnel daemon.
 
 ## Verify
@@ -127,12 +131,27 @@ The reverse-proxy lives in the CRISP DMZ at `120.0.40.3`. From the CPE:
 ```bash
 docker exec clab-enterprise-ospf-bgp-ovpn-nomad ping -c 3 120.0.40.3   # DMZ (web/proxy/PBX)
 docker exec clab-enterprise-ospf-bgp-ovpn-nomad ping -c 3 10.12.30.1   # CRISP client-net gateway
+docker exec clab-enterprise-ospf-bgp-ovpn-nomad nslookup intranet.corentinpradier.com 120.0.36.1
+docker exec clab-enterprise-ospf-bgp-ovpn-nomad wget -qO- --header="Host: intranet.corentinpradier.com" http://120.0.40.3 | grep -m1 "Connexion Intranet"
 ```
 
 The CPE pulls `120.0.40.0/24` and `10.12.30.0/24` over the tunnel (see
 `openvpn/nomad.conf`). The return path uses the CRISP static
 `10.255.255.0/30 → 120.0.40.2` (`ovpn-site` DMZ leg), which sends the reply
 back into the tunnel.
+
+The tunnel also carries `120.0.36.1` so the nomad CPE can resolve the
+intranet hostname before reaching the protected web vhost.
+
+The protected intranet lookup should succeed from the VPN CPE and the CRISP
+employee client, but not from `NOMAD-CLIENT`.
+
+```bash
+docker exec clab-enterprise-ospf-bgp-ovpn-nomad sh -lc 'nslookup intranet.corentinpradier.com 120.0.36.1'
+docker exec clab-enterprise-ospf-bgp-ovpn-nomad sh -lc 'wget -qO- --header="Host: intranet.corentinpradier.com" http://120.0.40.3 | grep -m1 "Connexion Intranet"'
+docker exec clab-enterprise-ospf-bgp-CRISP-CLIENT sh -lc 'nslookup intranet.corentinpradier.com 120.0.36.1'
+docker exec clab-enterprise-ospf-bgp-NOMAD-CLIENT sh -lc 'nslookup intranet.corentinpradier.com 120.0.36.1 || true'
+```
 
 ### 4. Sanity-check the public side stays opaque
 

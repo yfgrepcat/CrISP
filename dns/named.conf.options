@@ -1,7 +1,9 @@
-acl "enterprise-nets" { 120.0.37.0/24; 10.12.30.0/24; 10.255.255.0/30; };
-acl "crisp-nets" { 120.0.40.0/24; };
+acl "vpn-users" { 192.168.1.10/32; 10.255.255.0/30; };
+acl "crisp-employees" { 10.12.30.0/24; vpn-users; };
+acl "enterprise-nets" { crisp-employees; };
+acl "crisp-nets" { 120.0.40.0/24; 120.0.41.0/24; };
 acl "residential-nets" { 120.0.38.0/24; };
-acl "trusted" { enterprise-nets; residential-nets; };
+acl "trusted" { crisp-employees; residential-nets; };
 
 options {
   directory "/var/cache/bind";

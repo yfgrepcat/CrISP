@@ -14,13 +14,12 @@ The BIND config is split by views in `dns/views.conf`.
 
 View selection depends on source IP (client subnet):
 
-- Enterprise ACL: `120.0.37.0/24`
-- CRISP ACL: `120.0.39.0/24`
+- CRISP employees ACL: `10.12.30.0/24` and VPN user `192.168.1.10/32`
 - Residential ACL: `120.0.38.0/24`
 - Default view: all other addresses
 
 View selection is source-IP based, so answers can change depending on the client address.
-This allows us to control whether a client can resolve the intranet website or not. VoIP and extranet are always available.
+This allows us to control whether a client can resolve the intranet website or not. VoIP and extranet are always available, while intranet resolution is limited to CRISP employees and the nomad VPN CPE (`192.168.1.10`).
 
 Our services are under the domain `corentinpradier.com`:
 
@@ -130,40 +129,51 @@ corentinpradier.com.    3600    IN      SOA     ns.corentinpradier.com. admin.co
 ;; MSG SIZE  rcvd: 130
 ```
 
-## View test (enterprise vs residential)
+## View test (CRISP employees vs VPN vs residential)
 
 Run from the DNS container by creating temporary dummy source IPs inside the real ACL subnets.
 
 ```bash
 docker exec clab-enterprise-ospf-bgp-dns-as12 ip link add ent0 type dummy
-docker exec clab-enterprise-ospf-bgp-dns-as12 ip addr add 120.0.37.10/24 dev ent0
+docker exec clab-enterprise-ospf-bgp-dns-as12 ip addr add 10.12.30.10/24 dev ent0
 docker exec clab-enterprise-ospf-bgp-dns-as12 ip link set ent0 up
+
+docker exec clab-enterprise-ospf-bgp-dns-as12 ip link add vpn0 type dummy
+docker exec clab-enterprise-ospf-bgp-dns-as12 ip addr add 192.168.1.10/32 dev vpn0
+docker exec clab-enterprise-ospf-bgp-dns-as12 ip link set vpn0 up
 
 docker exec clab-enterprise-ospf-bgp-dns-as12 ip link add res0 type dummy
 docker exec clab-enterprise-ospf-bgp-dns-as12 ip addr add 120.0.38.10/24 dev res0
 docker exec clab-enterprise-ospf-bgp-dns-as12 ip link set res0 up
 
-docker exec clab-enterprise-ospf-bgp-dns-as12 dig -b 120.0.37.10 @120.0.36.1 intranet.corentinpradier.com
+docker exec clab-enterprise-ospf-bgp-dns-as12 dig -b 10.12.30.10 @120.0.36.1 intranet.corentinpradier.com
+docker exec clab-enterprise-ospf-bgp-dns-as12 dig -b 192.168.1.10 @120.0.36.1 intranet.corentinpradier.com
 docker exec clab-enterprise-ospf-bgp-dns-as12 dig -b 120.0.38.10 @120.0.36.1 intranet.corentinpradier.com
 ```
 
-Expected: DNS resolution for intranet works when the source address is in the `120.0.37.0/24` and `120.0.38.0/24` ranges, which match the ACLs in `named.conf.options`:
-- acl "enterprise-nets" { 120.0.37.0/24; };
+Expected: DNS resolution for intranet works when the source address is in the CRISP employee or VPN ranges, which match the ACLs in `named.conf.options`:
+- acl "crisp-employees" { 10.12.30.0/24; vpn-users; };
+- acl "vpn-users" { 192.168.1.10/32; 10.255.255.0/30; };
 - acl "residential-nets" { 120.0.38.0/24; };
 
 ```bash
 t70n@t70n-workstation:~/Documents/enterprise-network$ docker exec clab-enterprise-ospf-bgp-dns-as12 ip link add ent0 type dummy
-docker exec clab-enterprise-ospf-bgp-dns-as12 ip addr add 120.0.37.10/24 dev ent0
+docker exec clab-enterprise-ospf-bgp-dns-as12 ip addr add 10.12.30.10/24 dev ent0
 docker exec clab-enterprise-ospf-bgp-dns-as12 ip link set ent0 up
+
+docker exec clab-enterprise-ospf-bgp-dns-as12 ip link add vpn0 type dummy
+docker exec clab-enterprise-ospf-bgp-dns-as12 ip addr add 192.168.1.10/32 dev vpn0
+docker exec clab-enterprise-ospf-bgp-dns-as12 ip link set vpn0 up
 
 docker exec clab-enterprise-ospf-bgp-dns-as12 ip link add res0 type dummy
 docker exec clab-enterprise-ospf-bgp-dns-as12 ip addr add 120.0.38.10/24 dev res0
 docker exec clab-enterprise-ospf-bgp-dns-as12 ip link set res0 up
 
-docker exec clab-enterprise-ospf-bgp-dns-as12 dig -b 120.0.37.10 @120.0.36.1 intranet.corentinpradier.com
+docker exec clab-enterprise-ospf-bgp-dns-as12 dig -b 10.12.30.10 @120.0.36.1 intranet.corentinpradier.com
+docker exec clab-enterprise-ospf-bgp-dns-as12 dig -b 192.168.1.10 @120.0.36.1 intranet.corentinpradier.com
 docker exec clab-enterprise-ospf-bgp-dns-as12 dig -b 120.0.38.10 @120.0.36.1 intranet.corentinpradier.com
 
-; <<>> DiG 9.21.21 <<>> -b 120.0.37.10 @120.0.36.1 intranet.corentinpradier.com
+; <<>> DiG 9.21.21 <<>> -b 10.12.30.10 @120.0.36.1 intranet.corentinpradier.com
 ; (1 server found)
 ;; global options: +cmd
 ;; Got answer:
@@ -185,7 +195,7 @@ intranet.corentinpradier.com. 3600 IN   A       172.20.20.34
 ;; MSG SIZE  rcvd: 101
 
 
-; <<>> DiG 9.21.21 <<>> -b 120.0.38.10 @120.0.36.1 intranet.corentinpradier.com
+; <<>> DiG 9.21.21 <<>> -b 192.168.1.10 @120.0.36.1 intranet.corentinpradier.com
 ; (1 server found)
 ;; global options: +cmd
 ;; Got answer:
@@ -216,38 +226,45 @@ docker exec clab-enterprise-ospf-bgp-dns-as12 ip link del res0
 
 ## Realistic client-side checks
 
-In this test, we are using containers that receive IPs from DHCP. Those addresses can resolve the intranet.
-This test requires the DHCP setup to work. The first command is run in `SITE-CLIENT` (`120.0.37.0/24`), and the second command is run from `CRISP-CLIENT`, which gets its address from the CRISP private client net on `10.12.30.0/24`.
+Use the CRISP employee client and the VPN CPE to verify the protected intranet view, then confirm a non-CRISP client still gets NXDOMAIN.
 
 ```bash
-docker exec clab-enterprise-ospf-bgp-SITE-CLIENT sh -lc 'nslookup extranet.corentinpradier.com 120.0.36.1'
 docker exec clab-enterprise-ospf-bgp-CRISP-CLIENT sh -lc 'nslookup intranet.corentinpradier.com 120.0.36.1'
+docker exec clab-enterprise-ospf-bgp-ovpn-nomad sh -lc 'nslookup intranet.corentinpradier.com 120.0.36.1'
+docker exec clab-enterprise-ospf-bgp-NOMAD-CLIENT sh -lc 'nslookup intranet.corentinpradier.com 120.0.36.1 || true'
 ```
 
 Expected:
 
 ```bash
-t70n@t70n-workstation:~/Documents/enterprise-network$ docker exec clab-enterprise-ospf-bgp-SITE-CLIENT sh -lc 'nslookup extranet.corentinpradier.com 120.0.36.1'
-Server:         120.0.36.1
-Address:        120.0.36.1:53
-
-Name:   extranet.corentinpradier.com
-Address: 172.20.20.34
-
-
 t70n@t70n-workstation:~/Documents/enterprise-network$ docker exec clab-enterprise-ospf-bgp-CRISP-CLIENT sh -lc 'nslookup intranet.corentinpradier.com 120.0.36.1'
 Server:         120.0.36.1
 Address:        120.0.36.1:53
 
 Name:   intranet.corentinpradier.com
 Address: 172.20.20.34
+
+
+t70n@t70n-workstation:~/Documents/enterprise-network$ docker exec clab-enterprise-ospf-bgp-ovpn-nomad sh -lc 'nslookup intranet.corentinpradier.com 120.0.36.1'
+Server:         120.0.36.1
+Address:        120.0.36.1:53
+
+Name:   intranet.corentinpradier.com
+Address: 172.20.20.34
+
+
+t70n@t70n-workstation:~/Documents/enterprise-network$ docker exec clab-enterprise-ospf-bgp-NOMAD-CLIENT sh -lc 'nslookup intranet.corentinpradier.com 120.0.36.1 || true'
+;; communications error to 120.0.36.1#53: timed out
+;; communications error to 120.0.36.1#53: timed out
+;; communications error to 120.0.36.1#53: timed out
 ```
 
+Then confirm the CRISP client can still reach the DMZ:
 
-
+```bash
 docker exec clab-enterprise-ospf-bgp-CRISP-CLIENT ip addr show eth1
 docker exec clab-enterprise-ospf-bgp-CRISP-CLIENT ip route
 docker exec clab-enterprise-ospf-bgp-CRISP-CLIENT ping -c 3 120.0.40.10
 docker exec clab-enterprise-ospf-bgp-CRISP-CLIENT ping -c 3 120.0.36.1
-docker exec clab-enterprise-ospf-bgp-CRISP-CLIENT nslookup intranet.corentinpradier.com 120.0.36.1
 docker exec clab-enterprise-ospf-bgp-CRISP-CLIENT nslookup voip.corentinpradier.com 120.0.36.1
+```
