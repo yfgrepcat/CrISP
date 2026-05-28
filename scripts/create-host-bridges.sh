@@ -9,6 +9,8 @@ BRIDGES=(
   net-site
   net-crisp
   net-crisp-cli
+  net-home
+  breakout-trunk
   br-vlan104
   br-vlan121
   br-vlan122
@@ -16,6 +18,9 @@ BRIDGES=(
 
 BREAKOUT_VLANS=(104 121 122)
 TRUNK_IFACE="${TRUNK_IFACE:-}"
+RAW_TRUNK_IFACE="${RAW_TRUNK_IFACE:-}"
+P4_TRANSPORT_IFACE="${P4_TRANSPORT_IFACE:-}"
+P4_TRANSPORT_VLAN="${P4_TRANSPORT_VLAN:-104}"
 VLAN_IFACE_PREFIX="${VLAN_IFACE_PREFIX:-clab}"
 
 if [[ "$EUID" -ne 0 ]]; then
@@ -37,6 +42,38 @@ for bridge in "${BRIDGES[@]}"; do
 
   ip link set dev "$bridge" up
 done
+
+if [[ -n "$RAW_TRUNK_IFACE" ]]; then
+  if ! ip link show dev "$RAW_TRUNK_IFACE" >/dev/null 2>&1; then
+    echo "Interface '$RAW_TRUNK_IFACE' was not found." >&2
+    exit 1
+  fi
+
+  ip link set dev "$RAW_TRUNK_IFACE" up
+  ip link set dev "$RAW_TRUNK_IFACE" master breakout-trunk
+  echo "Attached raw trunk interface '$RAW_TRUNK_IFACE' to 'breakout-trunk'."
+fi
+
+if [[ -n "$P4_TRANSPORT_IFACE" ]]; then
+  if ! ip link show dev "$P4_TRANSPORT_IFACE" >/dev/null 2>&1; then
+    echo "Interface '$P4_TRANSPORT_IFACE' was not found." >&2
+    exit 1
+  fi
+
+  p4_vlan_iface="${VLAN_IFACE_PREFIX}${P4_TRANSPORT_VLAN}"
+  ip link set dev "$P4_TRANSPORT_IFACE" up
+
+  if ip link show dev "$p4_vlan_iface" >/dev/null 2>&1; then
+    echo "VLAN interface '$p4_vlan_iface' already exists."
+  else
+    ip link add link "$P4_TRANSPORT_IFACE" name "$p4_vlan_iface" type vlan id "$P4_TRANSPORT_VLAN"
+    echo "Created VLAN interface '$p4_vlan_iface'."
+  fi
+
+  ip link set dev "$p4_vlan_iface" up
+  ip link set dev "$p4_vlan_iface" master breakout-trunk
+  echo "Attached '$p4_vlan_iface' to 'breakout-trunk' for P4 transport VLAN $P4_TRANSPORT_VLAN."
+fi
 
 if [[ -n "$TRUNK_IFACE" ]]; then
   if ! ip link show dev "$TRUNK_IFACE" >/dev/null 2>&1; then
@@ -62,7 +99,7 @@ if [[ -n "$TRUNK_IFACE" ]]; then
     echo "Attached '$vlan_iface' to '$bridge'."
   done
 else
-  echo "TRUNK_IFACE is not set; created bridges only. Set TRUNK_IFACE to create VLAN-backed breakout ports." >&2
+  echo "TRUNK_IFACE is not set; skipped VLAN-backed breakout ports." >&2
 fi
 
 ip -br link show "${BRIDGES[@]}"

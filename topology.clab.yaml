@@ -614,6 +614,8 @@ topology:
       kind: bridge      # CRISP private client net — 10.12.30.0/24
     net-home:
       kind: bridge      # nomad's home LAN behind home-ce — 192.168.1.0/24
+    breakout-trunk:
+      kind: bridge      # raw trunk toward the physical breakout switch
 
 
 
@@ -667,4 +669,7 @@ topology:
     # VoIP
     - endpoints: ["phone-crisp1:eth1",  "net-crisp-cli:phone-crisp1-port"]   # 10.12.30.101/24
     - endpoints: ["phone-crisp2:eth1", "net-crisp-cli:phone-crisp2-port"]   # 10.12.30.102/24
+
+    # Physical breakout trunk for P4 BGP interconnect VLANs 1012/1213
+    - endpoints: ["P4:eth4", "breakout-trunk:p4-trunk"]
   # end
