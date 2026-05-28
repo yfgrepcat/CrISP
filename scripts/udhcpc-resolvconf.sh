@@ -1,4 +1,11 @@
 #!/bin/sh
+# This script acts as a configuration/resolvconf handler for udhcpc (busybox DHCP client).
+# It configures the IP address, subnet mask, default gateway, and updates /etc/resolv.conf 
+# based on parameters provided by the DHCP server.
+#
+# Usage:
+#   This script is invoked by udhcpc with arguments: bound, renew, deconfig, leasefail, nak
+#   Environment variables like $interface, $ip, $mask, $router, $dns, $search, $domain are set by udhcpc.
 
 set -eu
 

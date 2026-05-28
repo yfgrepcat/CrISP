@@ -64,8 +64,8 @@
 #
 # External breakout trunk:
 #   TRUNK_IFACE=<host-nic> sudo -E ./scripts/create-host-bridges.sh
-#   - host NIC trunk subinterface VLAN 104 -> br-vlan104 -> P4:Ethernet4
-#   - host NIC trunk subinterface VLAN 121 -> br-vlan121 -> PE-isp:e1-3
+#   - host NIC trunk subinterface VLAN 104 -> breakout-trunk -> P4:Ethernet4
+#   - host NIC trunk subinterface VLAN 121 -> br-vlan121 -> PE-nomad:e1-4
 #   - host NIC trunk subinterface VLAN 122 -> br-vlan122 -> PE-site:e1-5
 # =============================================================================
 
@@ -390,7 +390,6 @@ topology:
         set / network-instance default interface ethernet-1/1.0
         set / network-instance default interface ethernet-1/2.0
         set / network-instance default interface ethernet-1/3.0
-        set / network-instance default interface ethernet-1/4.0
         set / network-instance default interface system0.0
         set / network-instance default static-routes route 10.255.255.0/30 next-hop-group ovpn-next
         set / network-instance default next-hop-groups group ovpn-next nexthop 1 ip-address 120.0.40.2
@@ -626,6 +625,8 @@ topology:
       image: reverse-proxy:latest
       mgmt-ipv4: 172.20.20.34
       env:
+        NOMAD_NETWORK: "120.0.38.0/24"
+        SITE_NETWORK: "120.0.37.0/24"
         VPN_CLIENT_NETWORK: "192.168.1.10/32"
         CRISP_CLIENT_NETWORK: "10.12.30.0/24"
       exec:
@@ -670,7 +671,7 @@ topology:
     breakout-trunk:
       kind: bridge      # raw trunk toward the physical breakout switch
     br-vlan121:
-      kind: bridge      # physical breakout VLAN 121 toward PE-isp
+      kind: bridge      # PE-nomad client LAN exposed on physical VLAN 121 — 120.0.38.0/24
     br-vlan122:
       kind: bridge      # physical breakout VLAN 122 toward PE-site
 
@@ -711,12 +712,11 @@ topology:
     - endpoints: ["CRISP:e1-3", "net-crisp-srv:crisp-srv-port"]
     - endpoints: ["CRISP:e1-4", "net-crisp-cli:crisp-client-port"]
     - endpoints: ["CRISP-CLIENT:eth1", "net-crisp-cli:crisp-client-host-port"]
-    - endpoints: ["PE-nomad:e1-4", "net-nomad:pe-nomad-port"]
-    - endpoints: ["NOMAD-CLIENT:eth1", "net-nomad:nomad-client-port"]
+    - endpoints: ["PE-nomad:e1-4", "br-vlan121:pe-nomad-vlan121"] # VLAN 121, 120.0.38.1/24
+    - endpoints: ["NOMAD-CLIENT:eth1", "br-vlan121:nomad-client-port"]
 
     # PE southbound to host bridges
     - endpoints: ["PE-isp:e1-2",   "net-isp:pe-isp-port"]    # 203.0.113.1/24 (public side)
-    - endpoints: ["PE-isp:e1-3",   "br-vlan121:pe-isp-vlan121"]  # VLAN 121, 120.0.39.1/24
     - endpoints: ["PE-site:e1-2",  "net-site:pe-site-port"]  # 120.0.37.1/24 (enterprise client LAN)
     - endpoints: ["PE-site:e1-5",  "br-vlan122:pe-site-vlan122"] # VLAN 122, 120.0.41.1/24
     - endpoints: ["PE-site:e1-4",  "CRISP:e1-1"]  # 120.0.39.0/31 (PE-site <-> CRISP transit)

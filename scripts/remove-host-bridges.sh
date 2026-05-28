@@ -1,4 +1,15 @@
 #!/usr/bin/env bash
+# This script tears down the host bridges and deletes the VLAN subinterfaces created by the setup scripts.
+#
+# Requirements:
+#   - Must be run as root.
+#
+# Environment variables:
+#   VLAN_IFACE_PREFIX  : Prefix for VLAN subinterfaces to delete (default: clab).
+#
+# Usage:
+#   sudo ./scripts/remove-host-bridges.sh
+
 set -euo pipefail
 
 BRIDGES=(
@@ -8,6 +19,8 @@ BRIDGES=(
   net-nomad
   net-site
   net-crisp
+  net-crisp-dmz
+  net-crisp-srv
   net-crisp-cli
   net-home
   breakout-trunk
