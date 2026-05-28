@@ -84,6 +84,11 @@ if [[ -n "$TRUNK_IFACE" ]]; then
   ip link set dev "$TRUNK_IFACE" up
 
   for vlan in "${BREAKOUT_VLANS[@]}"; do
+    if [[ -n "$P4_TRANSPORT_IFACE" && "$vlan" == "$P4_TRANSPORT_VLAN" ]]; then
+      echo "Skipping VLAN $vlan in VLAN-backed breakout loop; it is used for P4 transport."
+      continue
+    fi
+
     vlan_iface="${VLAN_IFACE_PREFIX}${vlan}"
     bridge="br-vlan${vlan}"
 
