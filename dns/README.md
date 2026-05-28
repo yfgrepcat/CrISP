@@ -2,13 +2,73 @@
 
 ## Architecture overview
 
-The DNS server is `dns-as12` (BIND9) connected to the P1 service LAN.
+Two BIND9 nameservers:
 
-- DNS container name: `clab-enterprise-ospf-bgp-dns-as12`
-- DNS mgmt IP: `172.20.20.30`
-- DNS service IP: `120.0.36.1/31`
+| Node | Role | Service IP | Mgmt IP | Container name |
+| --- | --- | --- | --- | --- |
+| `dns-as12` | AS12 authoritative resolver (views) | `120.0.36.1/31` (P1 service LAN) | `172.20.20.30` | `clab-enterprise-ospf-bgp-dns-as12` |
+| `dns-root` | Lab root nameserver (sync point for inter-AS DNS) | `120.0.34.14/30` (off PE-isp:e1-5) | `172.20.20.40` | `clab-enterprise-ospf-bgp-dns-root` |
 
-The BIND config is split by views in `dns/views.conf`.
+`dns-as12` config is split by views in `dns/views.conf` (loaded by `dns/named.conf`).
+`dns-root` is a separate, single-purpose authoritative server for `.` configured under `dns/root/`.
+
+### Lab root DNS — the inter-AS sync point
+
+Each AS keeps its own authoritative zone (we keep `corentinpradier.com`). To resolve a peer AS's zone without depending on that peer's resolver being up — and to avoid bring-up order coupling — every AS resolver iterates from a shared root: `dns-root` (`120.0.34.14`). The root only holds NS delegations + glue, one entry per AS.
+
+```
+clients ──► dns-as12 (recursive, views) ──► dns-root (.)
+                                              ├─ corentinpradier.com.  → 120.0.36.1  (AS12)
+                                              ├─ <as11-zone>.          → <as11-ip>   (TODO)
+                                              ├─ <as13-zone>.          → 120.0.48.34 (TODO add zone name)
+                                              └─ <as14-zone>.          → <as14-ip>   (TODO)
+```
+
+Reachability today: `dns-root` sits on the dedicated `120.0.34.12/30` link off `PE-isp` (e1-5 .13 ↔ dns-root .14), advertised as a passive OSPF interface so every internal node can reach it. To let peer ASes use it, the same prefix should be re-advertised over eBGP from `PE-isp` once inter-AS peering is wired.
+
+**Why this beats a forwarder list**: with `forwarders { peerA; peerB; … }; forward first;`, a peer's `NXDOMAIN` is authoritative and aborts the lookup, and any peer being down adds latency to every uncached query. With root hints + delegation, the answer for `peer-zone.X` is fetched directly from peer X's own NS — no other AS sits in the critical path.
+
+**Adding a peer AS** (one block in `dns/root/db.root`):
+
+```bind
+<peer-zone>.    IN NS    ns.<peer-zone>.
+ns.<peer-zone>. IN A     <peer-dns-ip>
+```
+
+Then bump the SOA serial in `dns/root/db.root` and reload `dns-root`.
+
+### AS12 resolver (`dns-as12`) layout
+
+- `dns/named.conf` — loads options + views.
+- `dns/named.conf.options` — ACLs (crisp-employees / crisp-nets / residential-nets), no global forwarders (we iterate via root hints).
+- `dns/root.hints` — root hint pointing at `dns-root` (`120.0.34.14`).
+- `dns/views.conf` — three views (enterprise / residential / default); the two recursive views include a `zone "."` of type `hint`.
+- `dns/zones/db.corentinpradier.com{,.public}` — the AS12 authoritative zone (internal + public variant).
+
+### Verify the root chain
+
+```bash
+# 1. dns-root is reachable + authoritative for `.`
+docker exec clab-enterprise-ospf-bgp-dns-as12 dig @120.0.34.14 . SOA +norec
+#    → answer with AA flag, SOA root-srv.lab. admin.lab. ...
+
+# 2. dns-root delegates our zone (NS + glue)
+docker exec clab-enterprise-ospf-bgp-dns-as12 dig @120.0.34.14 corentinpradier.com NS +norec
+#    → AUTHORITY: corentinpradier.com. NS ns.corentinpradier.com.
+#    → ADDITIONAL: ns.corentinpradier.com. A 120.0.36.1
+
+# 3. dns-as12 has the root hint loaded
+docker exec clab-enterprise-ospf-bgp-dns-as12 rndc dumpdb -cache && \
+  docker exec clab-enterprise-ospf-bgp-dns-as12 grep -m1 root-srv.lab /var/cache/bind/named_dump.db || true
+
+# 4. (Once a peer AS has been added to db.root) iterative path end-to-end:
+docker exec clab-enterprise-ospf-bgp-CRISP-CLIENT sh -lc '
+  nslookup <name-in-peer-zone> 120.0.36.1
+'
+#    → resolves via root → peer NS → answer
+```
+
+The iterative chain only has anything to iterate to once at least one peer AS publishes its delegation in `dns/root/db.root`; until then the AS12 zone is answered locally by the matching view and never hits the root.
 
 ## Views and ACL behavior
 

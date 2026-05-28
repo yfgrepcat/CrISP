@@ -1,2 +1,10 @@
-; Minimal root hints placeholder. Replace with a real root.hints file if needed.
-; Root hints can be downloaded from https://www.internic.net/domain/named.root
+; Lab root hints. Points this resolver at the classroom root DNS so iterative
+; resolution can reach any peer AS's zone without depending on every peer's
+; resolver being up at the same time. Replace if a different root is used.
+;
+; To resolve real-Internet names from this server, add a forwarder for the
+; specific zones in named.conf.options — the lab root does not delegate to
+; the public ICANN root.
+
+.                       86400  IN  NS    root-srv.lab.
+root-srv.lab.           86400  IN  A     120.0.34.14

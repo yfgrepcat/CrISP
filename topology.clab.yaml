@@ -22,6 +22,11 @@
 #   P3-PE-site     120.0.34.4/31    (P3 .4, PE-site .5)
 #   P2-RADIUS      120.0.34.10/31   (P2 .10, RADIUS .11)
 #
+# Lab root DNS /30 -> 120.0.34.12/30  (PE-isp .13, dns-root .14)
+#   Dedicated transit segment, advertised in OSPF today; meant to be
+#   re-advertised over eBGP so peer ASes can use dns-root as their hint
+#   for the lab root zone.
+#
 # VoIP /31s -> 120.0.35.0/24
 #   P4-pbx         120.0.35.0/31    (P4 .0, pbx .1)         -- PBX branché sur P4
 #   The softphones now live on the CRISP client net at 10.12.30.101/24 and 10.12.30.102/24.
@@ -252,18 +257,24 @@ topology:
         set / interface ethernet-1/2 subinterface 0 admin-state enable
         set / interface ethernet-1/2 subinterface 0 ipv4 admin-state enable
         set / interface ethernet-1/2 subinterface 0 ipv4 address 203.0.113.1/24
+        set / interface ethernet-1/5 admin-state enable
+        set / interface ethernet-1/5 subinterface 0 admin-state enable
+        set / interface ethernet-1/5 subinterface 0 ipv4 admin-state enable
+        set / interface ethernet-1/5 subinterface 0 ipv4 address 120.0.34.13/30
         set / interface system0 admin-state enable
         set / interface system0 subinterface 0 admin-state enable
         set / interface system0 subinterface 0 ipv4 admin-state enable
         set / interface system0 subinterface 0 ipv4 address 120.0.32.21/32
         set / network-instance default interface ethernet-1/1.0
         set / network-instance default interface ethernet-1/2.0
+        set / network-instance default interface ethernet-1/5.0
         set / network-instance default interface system0.0
         set / network-instance default protocols ospf instance main admin-state enable
         set / network-instance default protocols ospf instance main version ospf-v2
         set / network-instance default protocols ospf instance main router-id 120.0.32.21
         set / network-instance default protocols ospf instance main area 0.0.0.0 interface system0.0 passive true
         set / network-instance default protocols ospf instance main area 0.0.0.0 interface ethernet-1/1.0 interface-type point-to-point
+        set / network-instance default protocols ospf instance main area 0.0.0.0 interface ethernet-1/5.0 passive true
 
     PE-nomad:
       kind: nokia_srlinux
@@ -400,6 +411,25 @@ topology:
         - ip link set eth1 up
         - ip addr add 120.0.36.1/31 dev eth1
         - ip route replace default via 120.0.36.0
+
+    # ---[ROOT DNS]--------------------------------------------------------------
+    # Lab "root" nameserver — authoritative for `.`, delegates each AS's zone
+    # to that AS's own resolver. Shared sync point so every AS DNS can come up
+    # independently and still resolve its peers via iterative resolution.
+    # Reachable today through OSPF (PE-isp advertises 120.0.34.12/30 passive);
+    # meant to also be re-advertised over eBGP once inter-AS peering is wired.
+    dns-root:
+      kind: linux
+      image: internetsystemsconsortium/bind9:9.21
+      mgmt-ipv4: 172.20.20.40
+      group: services
+      binds:
+        - ./dns/root:/etc/bind
+      exec:
+        - sh -lc 'if command -v apk >/dev/null 2>&1; then apk add --no-cache tcpdump; else apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends tcpdump && rm -rf /var/lib/apt/lists/*; fi'
+        - ip link set eth1 up
+        - ip addr add 120.0.34.14/30 dev eth1
+        - ip route replace default via 120.0.34.13
 
     # ---[DHCP]------------------------------------------------------------------
     dhcp:
@@ -646,6 +676,9 @@ topology:
     - endpoints: ["P2:e1-10", "PE-nomad:e1-1"]  # 120.0.34.2/31
     - endpoints: ["P3:e1-10", "PE-site:e1-1"]   # 120.0.34.4/31
     - endpoints: ["P2:e1-5", "radius:eth1"]     # 120.0.34.10/31
+
+    # Root DNS dedicated /30
+    - endpoints: ["PE-isp:e1-5", "dns-root:eth1"]  # 120.0.34.12/30
 
     # P1 service links
     - endpoints: ["P1:e1-9", "dns-net:p1-dns-port"]
