@@ -82,7 +82,7 @@ sudo containerlab deploy --topo topology.clab.yaml
 2. Confirm expected containers exist:
 
 ```bash
-docker ps --format '{{.Names}}' | grep -E 'TESTCLIENT|SITE-CLIENT|NOMAD-CLIENT|CRISP-CLIENT|dhcp|dhcp-crisp'
+docker ps --format '{{.Names}}' | grep -E 'TESTCLIENT|NOMAD-CLIENT|CRISP-CLIENT|dhcp|dhcp-crisp'
 ```
 
 3. Check relay clients receive addresses and routes:
@@ -90,8 +90,6 @@ docker ps --format '{{.Names}}' | grep -E 'TESTCLIENT|SITE-CLIENT|NOMAD-CLIENT|C
 ```bash
 docker exec clab-enterprise-ospf-bgp-NOMAD-CLIENT ip addr show eth1
 docker exec clab-enterprise-ospf-bgp-NOMAD-CLIENT ip route
-docker exec clab-enterprise-ospf-bgp-SITE-CLIENT ip addr show eth1
-docker exec clab-enterprise-ospf-bgp-SITE-CLIENT ip route
 ```
 
 4. Validate central DHCP process and logs:

@@ -47,7 +47,6 @@ docker exec clab-enterprise-ospf-bgp-CRISP-CLIENT sh -lc 'wget -qO- --header="Ho
 The intranet site should be reachable only from allowed enterprise/private ranges.
 
 ```bash
-docker exec clab-enterprise-ospf-bgp-SITE-CLIENT sh -lc 'nslookup intranet.corentinpradier.com 120.0.36.1'
 docker exec clab-enterprise-ospf-bgp-CRISP-CLIENT sh -lc 'nslookup intranet.corentinpradier.com 120.0.36.1'
 docker exec clab-enterprise-ospf-bgp-CRISP-CLIENT sh -lc 'wget -qO- --header="Host: intranet.corentinpradier.com" http://120.0.40.3 | grep -m1 "Connexion Intranet"'
 ```

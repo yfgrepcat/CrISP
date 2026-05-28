@@ -145,7 +145,6 @@ flowchart TB
 
   %% --- HQ site (net-site) ---
   subgraph HQ["Enterprise HQ"]
-    SITEC["SITE-CLIENT"]
     PHs["phone-crisp1<br/>120.0.35.3"]
     NETSITE{{"net-site<br/>10.12.20.0/24"}}
     OVPNs["ovpn-site<br/>.2 + 203.0.113.50"]
@@ -197,7 +196,7 @@ Logical view of who consumes each service. Solid arrows are data paths, dotted a
 %%{init: {'theme': 'base', 'themeVariables': {'fontSize': '16px'}}}%%
 flowchart LR
   %% --- consumers ---
-  SITEC["SITE-CLIENT<br/>HQ 120.0.37.0/24"]
+  # SITE-CLIENT removed: was HQ 120.0.37.0/24
   NOMADC["NOMAD-CLIENT<br/>residential"]
   PHs["phone-crisp1<br/>120.0.35.3"]
   PHn["phone-crisp2<br/>120.0.35.5"]
@@ -311,7 +310,7 @@ docker exec clab-enterprise-ospf-bgp-radius sh -c \
 The service IP is reachable across the AS because its `/31` is advertised in OSPF:
 
 ```bash
-  docker exec clab-enterprise-ospf-bgp-SITE-CLIENT ping -c2 120.0.34.11
+  # SITE-CLIENT removed; replace with a container attached to net-site for testing
 ```
 
 ### Test from the Arista P4 router

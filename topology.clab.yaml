@@ -452,17 +452,6 @@ topology:
       exec:
         - sh -lc 'for i in $(seq 1 30); do command -v ip >/dev/null 2>&1 && break; apt-get update >/dev/null 2>&1 && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends iproute2 >/dev/null 2>&1; sleep 2; done; ip link set eth1 up; ip addr add 120.0.34.11/31 dev eth1 2>/dev/null || true; ip route replace default via 120.0.34.10'
 
-    SITE-CLIENT:
-      kind: linux
-      image: alpine:latest
-      mgmt-ipv4: 172.20.20.52
-      cmd: /bin/sh -lc "sleep infinity"
-      exec:
-        - apk add --no-cache iproute2 tcpdump
-        - sh -lc 'ip route del default via 172.20.20.1 dev eth0 || true'
-        - ip addr add 120.0.37.100/24 dev eth1
-        - ip route replace default via 120.0.37.1 dev eth1
-
     CRISP-CLIENT:
       kind: linux
       image: alpine:latest
@@ -668,7 +657,7 @@ topology:
     - endpoints: ["dhcp:eth1", "dhcp-net:dhcp-port"]
 
     # Enterprise client access + CRISP LAN
-    - endpoints: ["SITE-CLIENT:eth1",  "net-site:site-client-port"]
+    # SITE-CLIENT previously modelled here; node removed so no static host endpoint.
     - endpoints: ["ovpn-site:eth1",  "net-crisp-dmz:ovpn-site-port"]
     - endpoints: ["reverse-proxy:eth1", "net-crisp-dmz:reverse-proxy-port"]
     - endpoints: ["web-server:eth1", "net-crisp-dmz:web-server-port"]
