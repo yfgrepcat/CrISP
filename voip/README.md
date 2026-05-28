@@ -1,36 +1,53 @@
 # VoIP
 
-Simple SIP call flow with one Asterisk PBX and 2 softphones.
+SIP call flow with one Asterisk PBX (server) and 2 softphones (clients).
+
+## Architecture
+
+### Files
 
 ```
-phone-site  (ext. 1001) ── PE-site  ──┐
-                                       ├── P4 ── pbx (Asterisk :5060)
-phone-nomad (ext. 1002) ── PE-nomad ──┘
+voip/
+  Makefile                    Build all Docker images; attach to phone consoles.
+  asterisk/
+    Dockerfile                Builds the Asterisk PBX image (asterisk + config).
+    sip.conf                  SIP peer definitions — ext. 1001, 1002 (topology phones)
+                              and 1003 (external client), dynamic host, ulaw/alaw codecs.
+    extensions.conf           Dial plan — Dial(SIP/100x, 30s) for each extension.
+  client/
+    Dockerfile                Builds the baresip softphone image (topology phones).
+    entrypoint.sh             Auto-configures baresip at startup: reads SIP_USER /
+                              SIP_SERVER / SIP_PASS env vars, detects local IP on
+                              eth1, writes accounts + config, then registers to PBX.
+  external-client/
+    Dockerfile                Builds the standalone baresip image for an off-topology machine.
+    entrypoint.sh             Same as client but detects outbound IP via ip route get
+                              (no eth1 assumption). Registers as ext. 1003.
+    docker-compose.yml        Ready-to-run compose file (network_mode: host, ext. 1003).
 ```
+
+### Network topology
+
+![architecture PBX softphones](resources/archi.png)
+
+The PBX runs in the CRISP SVC VLAN (`120.0.41.5/24`). Both phones sit in the CRISP LAN (`10.12.30.0/24`) and reach the PBX through the CRISP router.
 
 ## How it works
 
-- `pbx` runs Asterisk with SIP users `1001` and `1002`
-- `phone-site` registers as `1001` to `voip.corentinpradier.com`
-- `phone-nomad` registers as `1002` to `voip.corentinpradier.com`
+- `pbx` runs Asterisk with SIP users `1001`, `1002`, and `1003`
+- `phone-crisp1` registers as `1001` to `voip.corentinpradier.com`
+- `phone-crisp2` registers as `1002` to `voip.corentinpradier.com`
+- `phone-external` registers as `1003` from an off-topology machine
 
 Topology service links:
 
-- `pbx` on `120.0.35.1/31` (toward `P4`)
-- `phone-site` on `120.0.35.3/31` via `PE-site`
-- `phone-nomad` on `120.0.35.5/31` via `PE-nomad`
-
-Credentials:
-
-| Node | SIP ext | Password |
-|---|---|---|
-| pbx | - | - |
-| phone-site | 1001 | secret1 |
-| phone-nomad | 1002 | secret2 |
+- `pbx` on `120.0.41.5/24` in the CRISP SVC VLAN
+- `phone-crisp1` on `10.12.30.101/24` via `CRISP`
+- `phone-crisp2` on `10.12.30.102/24` via `CRISP`
 
 ## Registration
 
-Phones register automatically on startup (`regint=60`, re-registers every 60 s).
+Phones register automatically on startup (`regint=3600`, re-registers every 3600 s).
 
 Check registration status from a phone console:
 
@@ -38,52 +55,37 @@ Check registration status from a phone console:
 /reginfo
 ```
 
-Force re-registration:
-
-```text
-/register
-```
-
-Unregister:
-
-```text
-/unregister
-```
-
 ## Build and deploy
 
 ```bash
 cd voip
 make build
-cd ..
-
-sudo containerlab destroy --topo topology.clab.yaml --cleanup
-sudo containerlab deploy --topo topology.clab.yaml
 ```
+Then deploy, the topology normally (terminal or VScode extension)
 
-## Smoke test
+## Test
 
 Open both phone consoles in separate terminals:
 
 ```bash
 cd voip
-make phone-site
+make phone-crisp1
 ```
 
 ```bash
 cd voip
-make phone-nomad
+make phone-crisp2
 ```
 
 Both phones auto-register on startup. Verify with `/reginfo` before calling.
 
-From `phone-site`, place the call:
+From `phone-crisp1`, place the call:
 
 ```text
 /dial 1002
 ```
 
-From `phone-nomad`, answer:
+From `phone-crisp2`, answer:
 
 ```text
 /accept
@@ -97,18 +99,40 @@ End the call from either side:
 
 Detach from a phone console without stopping it: `Ctrl+C`.
 
-## Quick debug
+---
+
+## External client (ext. 1003)
+
+### Prerequisites
+
+The external machine must be able to reach the PBX at `120.0.41.5` (CRISP SVC VLAN).
+
+DNS resolution of `voip.corentinpradier.com` requires the topology DNS server (`120.0.36.1`) to be reachable. Add it to the host's resolver:
 
 ```bash
-docker logs clab-enterprise-ospf-bgp-pbx | tail -n 100
-docker exec clab-enterprise-ospf-bgp-phone-site ip addr show eth1
-docker exec clab-enterprise-ospf-bgp-phone-nomad ip addr show eth1
+echo "nameserver 120.0.36.1" | sudo tee /etc/resolv.conf
 ```
 
-Verify DNS resolution from a phone:
+Alternatively, skip DNS by setting `SIP_SERVER=120.0.41.5` directly in `docker-compose.yml`.
+
+### Build and deploy
+
+Docker Compose directly:
 
 ```bash
-docker exec clab-enterprise-ospf-bgp-phone-site getent hosts voip.corentinpradier.com
+cd voip/external-client
+docker compose up -d
 ```
 
-Note: audio quality is not the goal in this lab; the smoke test validates SIP registration and call signaling.
+### Interact
+
+```bash
+docker attach phone-external
+```
+
+```text
+/reginfo       — check registration status
+/dial 1001     — call phone-crisp1
+/dial 1002     — call phone-crisp2
+/hangup        — end the current call
+```

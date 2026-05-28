@@ -1,5 +1,5 @@
 # =============================================================================
-# Enterprise OSPF + eBGP lab
+# Enterprise OSPF + CRISP lab
 # Intra-AS addressing carved from 120.0.32.0/20  (= 120.0.32.0 - 120.0.47.255)
 #
 # Loopbacks     -> 120.0.32.0/24
@@ -20,23 +20,34 @@
 #   P1-PE-isp      120.0.34.0/31    (P1 .0, PE-isp .1)
 #   P2-PE-nomad    120.0.34.2/31    (P2 .2, PE-nomad .3)
 #   P3-PE-site     120.0.34.4/31    (P3 .4, PE-site .5)
-#   P2-DNS         120.0.34.6/31    (P2 .6, DNS .7)
-#   P1-REV-PROXY   120.0.34.8/31    (P1 .8, REVERSE-PROXY .9)
 #   P2-RADIUS      120.0.34.10/31   (P2 .10, RADIUS .11)
+#
+# Lab root DNS /30 -> 120.0.34.12/30  (PE-isp .13, dns-root .14)
+#   Dedicated transit segment, advertised in OSPF today; meant to be
+#   re-advertised over eBGP so peer ASes can use dns-root as their hint
+#   for the lab root zone.
 #
 # VoIP /31s -> 120.0.35.0/24
 #   P4-pbx         120.0.35.0/31    (P4 .0, pbx .1)         -- PBX branché sur P4
-#   PE-site-phone  120.0.35.2/31    (PE-site .2, phone-site .3)  -- client intranet
-#   PE-nomad-phone 120.0.35.4/31    (PE-nomad .4, phone-nomad .5) -- client externe
+#   The softphones now live on the CRISP client net at 10.12.30.101/24 and 10.12.30.102/24.
 #
-# HQ LAN (only LAN advertised in OSPF as a passive)
-#   PE-site LAN     10.12.20.0/24   (PE-site .1, ovpn-site .2)
+# Service /31s -> 120.0.36.0/24
+#   P1-DNS         120.0.36.0/31    (P1 .0, DNS .1)
+#   P1-DHCP        120.0.36.2/31    (P1 .2, DHCP .3)
+#
+# CRISP router and downstream nets
+#   PE-site-CRISP   120.0.39.0/31    (PE-site .0, CRISP .1)
+#   CRISP DMZ VLAN  120.0.40.0/24    (CRISP .1, ovpn + web)
+#   CRISP SVC VLAN  120.0.41.0/24    (CRISP .1, PBX + DHCP)
+#   CRISP clients   10.12.30.0/24    (CRISP .1, client PC + softphones)
 #
 # Public side (NOT in OSPF — opaque to the enterprise IGP)
 #   net-isp 203.0.113.0/24  (RFC 5737 TEST-NET-3 as the "Internet")
 #     PE-isp e1-2     203.0.113.1/24
-#     ovpn-site eth2  203.0.113.50/24    (HQ DMZ leg / OpenVPN listener)
-#     home-ce eth1    203.0.113.20/24    (CE WAN, source of NATed nomad traffic)
+#   ovpn-site is single-homed in the CRISP DMZ (120.0.40.2/24). The OpenVPN
+#   listener binds the DMZ IP; the nomad reaches it via internal OSPF
+#   (home-ce sits on net-nomad 120.0.38.0/24 → PE-nomad → core → PE-site →
+#   CRISP → DMZ). No public IP is needed for the VPN.
 #
 # Nomad home network (behind the CE — opaque to everything else)
 #   net-home 192.168.1.0/24
@@ -53,9 +64,9 @@
 #
 # External breakout trunk:
 #   TRUNK_IFACE=<host-nic> sudo -E ./scripts/create-host-bridges.sh
-#   - host NIC trunk subinterface VLAN 104 -> br-vlan104 -> P4:Ethernet4
-#   - host NIC trunk subinterface VLAN 121 -> br-vlan121 -> PE-isp:e1-3
-#   - host NIC trunk subinterface VLAN 122 -> br-vlan122 -> PE-isp:e1-4
+#   - host NIC trunk subinterface VLAN 104 -> breakout-trunk -> P4:Ethernet4
+#   - host NIC trunk subinterface VLAN 121 -> br-vlan121 -> PE-nomad:e1-4
+#   - host NIC trunk subinterface VLAN 122 -> br-vlan122 -> PE-site:e1-5
 # =============================================================================
 
 name: enterprise-ospf-bgp
@@ -65,6 +76,7 @@ mgmt:
   ipv4-subnet: 172.20.20.0/24
 
 topology:
+
   kinds:
     nokia_srlinux:
       image: ghcr.io/nokia/srlinux:24.10.7
@@ -98,11 +110,15 @@ topology:
         set / interface ethernet-1/9 admin-state enable
         set / interface ethernet-1/9 subinterface 0 admin-state enable
         set / interface ethernet-1/9 subinterface 0 ipv4 admin-state enable
-        set / interface ethernet-1/9 subinterface 0 ipv4 address 120.0.34.8/31
+        set / interface ethernet-1/9 subinterface 0 ipv4 address 120.0.36.0/31
         set / interface ethernet-1/10 admin-state enable
         set / interface ethernet-1/10 subinterface 0 admin-state enable
         set / interface ethernet-1/10 subinterface 0 ipv4 admin-state enable
         set / interface ethernet-1/10 subinterface 0 ipv4 address 120.0.34.0/31
+        set / interface ethernet-1/11 admin-state enable
+        set / interface ethernet-1/11 subinterface 0 admin-state enable
+        set / interface ethernet-1/11 subinterface 0 ipv4 admin-state enable
+        set / interface ethernet-1/11 subinterface 0 ipv4 address 120.0.36.2/31
         set / interface system0 admin-state enable
         set / interface system0 subinterface 0 admin-state enable
         set / interface system0 subinterface 0 ipv4 admin-state enable
@@ -112,13 +128,16 @@ topology:
         set / network-instance default interface ethernet-1/3.0
         set / network-instance default interface ethernet-1/9.0
         set / network-instance default interface ethernet-1/10.0
+        set / network-instance default interface ethernet-1/11.0
         set / network-instance default interface system0.0
+        set / network-instance default next-hop-groups group vpn-return nexthop 1 ip-address 120.0.39.1
+        set / network-instance default static-routes route 10.255.255.0/30 next-hop-group vpn-return
         set / network-instance default protocols ospf instance main admin-state enable
         set / network-instance default protocols ospf instance main version ospf-v2
         set / network-instance default protocols ospf instance main router-id 120.0.32.1
         set / network-instance default protocols ospf instance main area 0.0.0.0 interface system0.0 passive true
         set / network-instance default protocols ospf instance main area 0.0.0.0 interface ethernet-1/9.0 passive true
-        set / network-instance default interface ethernet-1/3.0
+        set / network-instance default protocols ospf instance main area 0.0.0.0 interface ethernet-1/11.0 passive true
         set / network-instance default protocols ospf instance main area 0.0.0.0 interface ethernet-1/1.0 interface-type point-to-point
         set / network-instance default protocols ospf instance main area 0.0.0.0 interface ethernet-1/2.0 interface-type point-to-point
         set / network-instance default protocols ospf instance main area 0.0.0.0 interface ethernet-1/3.0 passive true
@@ -199,10 +218,6 @@ topology:
         set / interface ethernet-1/10 subinterface 0 admin-state enable
         set / interface ethernet-1/10 subinterface 0 ipv4 admin-state enable
         set / interface ethernet-1/10 subinterface 0 ipv4 address 120.0.34.4/31
-        set / interface ethernet-1/11 admin-state enable
-        set / interface ethernet-1/11 subinterface 0 admin-state enable
-        set / interface ethernet-1/11 subinterface 0 ipv4 admin-state enable
-        set / interface ethernet-1/11 subinterface 0 ipv4 address 120.0.36.1/24
         set / interface system0 admin-state enable
         set / interface system0 subinterface 0 admin-state enable
         set / interface system0 subinterface 0 ipv4 admin-state enable
@@ -211,7 +226,6 @@ topology:
         set / network-instance default interface ethernet-1/2.0
         set / network-instance default interface ethernet-1/3.0
         set / network-instance default interface ethernet-1/10.0
-        set / network-instance default interface ethernet-1/11.0
         set / network-instance default interface system0.0
         set / network-instance default protocols ospf instance main admin-state enable
         set / network-instance default protocols ospf instance main version ospf-v2
@@ -221,7 +235,6 @@ topology:
         set / network-instance default protocols ospf instance main area 0.0.0.0 interface ethernet-1/2.0 interface-type point-to-point
         set / network-instance default protocols ospf instance main area 0.0.0.0 interface ethernet-1/3.0 interface-type point-to-point
         set / network-instance default protocols ospf instance main area 0.0.0.0 interface ethernet-1/10.0 interface-type point-to-point
-        set / network-instance default protocols ospf instance main area 0.0.0.0 interface ethernet-1/11.0 interface-type point-to-point
   
     P4:
       kind: arista_veos
@@ -246,30 +259,24 @@ topology:
         set / interface ethernet-1/2 subinterface 0 admin-state enable
         set / interface ethernet-1/2 subinterface 0 ipv4 admin-state enable
         set / interface ethernet-1/2 subinterface 0 ipv4 address 203.0.113.1/24
-        set / interface ethernet-1/3 admin-state enable
-        set / interface ethernet-1/3 subinterface 0 admin-state enable
-        set / interface ethernet-1/3 subinterface 0 ipv4 admin-state enable
-        set / interface ethernet-1/3 subinterface 0 ipv4 address 120.0.39.1/24
-        set / interface ethernet-1/4 admin-state enable
-        set / interface ethernet-1/4 subinterface 0 admin-state enable
-        set / interface ethernet-1/4 subinterface 0 ipv4 admin-state enable
-        set / interface ethernet-1/4 subinterface 0 ipv4 address 120.0.40.1/24
+        set / interface ethernet-1/5 admin-state enable
+        set / interface ethernet-1/5 subinterface 0 admin-state enable
+        set / interface ethernet-1/5 subinterface 0 ipv4 admin-state enable
+        set / interface ethernet-1/5 subinterface 0 ipv4 address 120.0.34.13/30
         set / interface system0 admin-state enable
         set / interface system0 subinterface 0 admin-state enable
         set / interface system0 subinterface 0 ipv4 admin-state enable
         set / interface system0 subinterface 0 ipv4 address 120.0.32.21/32
         set / network-instance default interface ethernet-1/1.0
         set / network-instance default interface ethernet-1/2.0
-        set / network-instance default interface ethernet-1/3.0
-        set / network-instance default interface ethernet-1/4.0
+        set / network-instance default interface ethernet-1/5.0
         set / network-instance default interface system0.0
         set / network-instance default protocols ospf instance main admin-state enable
         set / network-instance default protocols ospf instance main version ospf-v2
         set / network-instance default protocols ospf instance main router-id 120.0.32.21
         set / network-instance default protocols ospf instance main area 0.0.0.0 interface system0.0 passive true
         set / network-instance default protocols ospf instance main area 0.0.0.0 interface ethernet-1/1.0 interface-type point-to-point
-        set / network-instance default protocols ospf instance main area 0.0.0.0 interface ethernet-1/3.0 passive true
-        set / network-instance default protocols ospf instance main area 0.0.0.0 interface ethernet-1/4.0 passive true
+        set / network-instance default protocols ospf instance main area 0.0.0.0 interface ethernet-1/5.0 passive true
 
     PE-nomad:
       kind: nokia_srlinux
@@ -285,7 +292,7 @@ topology:
         set / interface ethernet-1/4 subinterface 0 ipv4 admin-state enable
         set / interface ethernet-1/4 subinterface 0 ipv4 address 120.0.38.1/24
         set / interface ethernet-1/4 subinterface 0 ipv4 dhcp-relay admin-state enable
-        set / interface ethernet-1/4 subinterface 0 ipv4 dhcp-relay server [ 120.0.36.10 ]
+        set / interface ethernet-1/4 subinterface 0 ipv4 dhcp-relay server [ 120.0.36.3 ]
         set / interface ethernet-1/3 admin-state enable
         set / interface ethernet-1/3 subinterface 0 admin-state enable
         set / interface ethernet-1/3 subinterface 0 ipv4 admin-state enable
@@ -318,36 +325,82 @@ topology:
         set / interface ethernet-1/2 admin-state enable
         set / interface ethernet-1/2 subinterface 0 admin-state enable
         set / interface ethernet-1/2 subinterface 0 ipv4 admin-state enable
-        set / interface ethernet-1/2 subinterface 0 ipv4 address 10.12.20.1/24
+        set / interface ethernet-1/2 subinterface 0 ipv4 address 120.0.37.1/24
+        set / interface ethernet-1/3 admin-state enable
+        set / interface ethernet-1/3 subinterface 0 admin-state enable
+        set / interface ethernet-1/3 subinterface 0 ipv4 admin-state enable
+        set / interface ethernet-1/3 subinterface 0 ipv4 address 120.0.35.2/31
         set / interface ethernet-1/4 admin-state enable
         set / interface ethernet-1/4 subinterface 0 admin-state enable
         set / interface ethernet-1/4 subinterface 0 ipv4 admin-state enable
-        set / interface ethernet-1/4 subinterface 0 ipv4 address 120.0.37.1/24
-        set / interface ethernet-1/4 subinterface 0 ipv4 dhcp-relay admin-state enable
-        set / interface ethernet-1/4 subinterface 0 ipv4 dhcp-relay server [ 120.0.36.10 ]
+        set / interface ethernet-1/4 subinterface 0 ipv4 address 120.0.39.0/31
+        set / interface ethernet-1/5 admin-state enable
+        set / interface ethernet-1/5 subinterface 0 admin-state enable
+        set / interface ethernet-1/5 subinterface 0 ipv4 admin-state enable
+        set / interface ethernet-1/5 subinterface 0 ipv4 address 120.0.41.1/24
         set / interface system0 admin-state enable
         set / interface system0 subinterface 0 admin-state enable
         set / interface system0 subinterface 0 ipv4 admin-state enable
         set / interface system0 subinterface 0 ipv4 address 120.0.32.23/32
         set / network-instance default interface ethernet-1/1.0
         set / network-instance default interface ethernet-1/2.0
+        set / network-instance default interface ethernet-1/3.0
         set / network-instance default interface ethernet-1/4.0
+        set / network-instance default interface ethernet-1/5.0
         set / network-instance default interface system0.0
         set / network-instance default static-routes route 10.255.255.0/30 next-hop-group ovpn-next
-        set / network-instance default next-hop-groups group ovpn-next nexthop 1 ip-address 10.12.20.2
+        set / network-instance default next-hop-groups group ovpn-next nexthop 1 ip-address 120.0.40.2
         set / network-instance default protocols ospf instance main admin-state enable
         set / network-instance default protocols ospf instance main version ospf-v2
         set / network-instance default protocols ospf instance main router-id 120.0.32.23
         set / network-instance default protocols ospf instance main area 0.0.0.0 interface system0.0 passive true
         set / network-instance default protocols ospf instance main area 0.0.0.0 interface ethernet-1/1.0 interface-type point-to-point
         set / network-instance default protocols ospf instance main area 0.0.0.0 interface ethernet-1/2.0 passive true
-        set / network-instance default protocols ospf instance main area 0.0.0.0 interface ethernet-1/4.0 passive true
+        set / network-instance default protocols ospf instance main area 0.0.0.0 interface ethernet-1/3.0 interface-type point-to-point
+        set / network-instance default protocols ospf instance main area 0.0.0.0 interface ethernet-1/4.0 interface-type point-to-point
+        set / network-instance default protocols ospf instance main area 0.0.0.0 interface ethernet-1/5.0 passive true
+
+    CRISP:
+      kind: nokia_srlinux
+      mgmt-ipv4: 172.20.20.24
+      group: edge
+      startup-config: |
+        set / interface ethernet-1/1 admin-state enable
+        set / interface ethernet-1/1 subinterface 0 admin-state enable
+        set / interface ethernet-1/1 subinterface 0 ipv4 admin-state enable
+        set / interface ethernet-1/1 subinterface 0 ipv4 address 120.0.39.1/31
+        set / interface ethernet-1/2 admin-state enable
+        set / interface ethernet-1/2 subinterface 0 admin-state enable
+        set / interface ethernet-1/2 subinterface 0 ipv4 admin-state enable
+        set / interface ethernet-1/2 subinterface 0 ipv4 address 120.0.40.1/24
         set / interface ethernet-1/3 admin-state enable
         set / interface ethernet-1/3 subinterface 0 admin-state enable
         set / interface ethernet-1/3 subinterface 0 ipv4 admin-state enable
-        set / interface ethernet-1/3 subinterface 0 ipv4 address 120.0.35.2/31
+        set / interface ethernet-1/3 subinterface 0 ipv4 address 120.0.41.1/24
+        set / interface ethernet-1/4 admin-state enable
+        set / interface ethernet-1/4 subinterface 0 admin-state enable
+        set / interface ethernet-1/4 subinterface 0 ipv4 admin-state enable
+        set / interface ethernet-1/4 subinterface 0 ipv4 address 10.12.30.1/24
+        set / interface ethernet-1/4 subinterface 0 ipv4 dhcp-relay admin-state enable
+        set / interface ethernet-1/4 subinterface 0 ipv4 dhcp-relay server [ 120.0.41.10 ]
+        set / interface system0 admin-state enable
+        set / interface system0 subinterface 0 admin-state enable
+        set / interface system0 subinterface 0 ipv4 admin-state enable
+        set / interface system0 subinterface 0 ipv4 address 120.0.32.24/32
+        set / network-instance default interface ethernet-1/1.0
+        set / network-instance default interface ethernet-1/2.0
         set / network-instance default interface ethernet-1/3.0
+        set / network-instance default interface system0.0
+        set / network-instance default static-routes route 10.255.255.0/30 next-hop-group ovpn-next
+        set / network-instance default next-hop-groups group ovpn-next nexthop 1 ip-address 120.0.40.2
+        set / network-instance default protocols ospf instance main admin-state enable
+        set / network-instance default protocols ospf instance main version ospf-v2
+        set / network-instance default protocols ospf instance main router-id 120.0.32.24
+        set / network-instance default protocols ospf instance main area 0.0.0.0 interface system0.0 passive true
+        set / network-instance default protocols ospf instance main area 0.0.0.0 interface ethernet-1/1.0 interface-type point-to-point
+        set / network-instance default protocols ospf instance main area 0.0.0.0 interface ethernet-1/2.0 passive true
         set / network-instance default protocols ospf instance main area 0.0.0.0 interface ethernet-1/3.0 passive true
+        set / network-instance default protocols ospf instance main area 0.0.0.0 interface ethernet-1/4.0 passive true
 
     # ===[SERVICES]==============================================================
 
@@ -361,10 +414,29 @@ topology:
         - ./dns:/etc/bind
       exec:
         - sh -lc 'if command -v apk >/dev/null 2>&1; then apk add --no-cache tcpdump; else apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends tcpdump && rm -rf /var/lib/apt/lists/*; fi'
-        - sh -lc 'printf "nameserver 172.20.20.30\n" > /etc/resolv.conf'
+        - sh -lc 'printf "nameserver 120.0.36.1\n" > /etc/resolv.conf'
         - ip link set eth1 up
-        - ip addr add 120.0.34.7/31 dev eth1
-        - ip route replace default via 120.0.34.6
+        - ip addr add 120.0.36.1/31 dev eth1
+        - ip route replace default via 120.0.36.0
+
+    # ---[ROOT DNS]--------------------------------------------------------------
+    # Lab "root" nameserver — authoritative for `.`, delegates each AS's zone
+    # to that AS's own resolver. Shared sync point so every AS DNS can come up
+    # independently and still resolve its peers via iterative resolution.
+    # Reachable today through OSPF (PE-isp advertises 120.0.34.12/30 passive);
+    # meant to also be re-advertised over eBGP once inter-AS peering is wired.
+    dns-root:
+      kind: linux
+      image: internetsystemsconsortium/bind9:9.21
+      mgmt-ipv4: 172.20.20.40
+      group: services
+      binds:
+        - ./dns/root:/etc/bind
+      exec:
+        - sh -lc 'if command -v apk >/dev/null 2>&1; then apk add --no-cache tcpdump; else apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends tcpdump && rm -rf /var/lib/apt/lists/*; fi'
+        - ip link set eth1 up
+        - ip addr add 120.0.34.14/30 dev eth1
+        - ip route replace default via 120.0.34.13
 
     # ---[DHCP]------------------------------------------------------------------
     dhcp:
@@ -374,7 +446,19 @@ topology:
         - NET_ADMIN
       binds:
         - ./dhcp:/opt/dhcp:ro
-      cmd: /bin/sh -lc "sleep 1; for i in {1..30}; do ip link set eth1 up 2>/dev/null && break; sleep 0.5; done; ip addr add 120.0.36.10/24 dev eth1 2>/dev/null || true; ip route add 120.0.32.0/20 via 120.0.36.1 dev eth1 2>/dev/null || true; mkdir -p /etc/dnsmasq.d; cp /opt/dhcp/dnsmasq.conf /etc/dnsmasq.d/enterprise-dhcp.conf; dnsmasq --no-daemon --bind-dynamic --conf-file=/etc/dnsmasq.d/enterprise-dhcp.conf"
+      cmd: /bin/sh -lc "sleep 1; for i in {1..30}; do ip link set eth1 up 2>/dev/null && break; sleep 0.5; done; ip addr add 120.0.36.3/31 dev eth1 2>/dev/null || true; ip route add 120.0.32.0/20 via 120.0.36.2 dev eth1 2>/dev/null || true; mkdir -p /etc/dnsmasq.d; cp /opt/dhcp/dnsmasq.conf /etc/dnsmasq.d/enterprise-dhcp.conf; dnsmasq --no-daemon --bind-dynamic --conf-file=/etc/dnsmasq.d/enterprise-dhcp.conf"
+
+    NOMAD-CLIENT:
+      kind: linux
+      image: alpine:latest
+      mgmt-ipv4: 172.20.20.54
+      cmd: /bin/sh -lc "sleep infinity"
+      binds:
+        - ./scripts/udhcpc-resolvconf.sh:/opt/udhcpc-resolvconf.sh:ro
+      exec:
+        - apk add --no-cache iproute2 tcpdump
+        - sh -lc 'ip route del default via 172.20.20.1 dev eth0 || true'
+        - udhcpc -i eth1 -q -s /opt/udhcpc-resolvconf.sh
 
     # ---[RADIUS]----------------------------------------------------------------
     # Minimal FreeRADIUS server hung off P2 (120.0.34.10/31, RADIUS = .11).
@@ -394,16 +478,6 @@ topology:
       exec:
         - sh -lc 'for i in $(seq 1 30); do command -v ip >/dev/null 2>&1 && break; apt-get update >/dev/null 2>&1 && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends iproute2 >/dev/null 2>&1; sleep 2; done; ip link set eth1 up; ip addr add 120.0.34.11/31 dev eth1 2>/dev/null || true; ip route replace default via 120.0.34.10'
 
-    test-site:
-      kind: linux
-      mgmt-ipv4: 172.20.20.51
-      group: hosts
-      exec:
-        - sh -lc 'if command -v apk >/dev/null 2>&1; then apk add --no-cache tcpdump; else apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends tcpdump && rm -rf /var/lib/apt/lists/*; fi'
-        - ip addr add 10.12.20.100/24 dev eth1
-        - sh -lc 'ip route del default via 172.20.20.1 dev eth0 || true'
-        - ip route replace default via 10.12.20.1 dev eth1
-
     SITE-CLIENT:
       kind: linux
       image: alpine:latest
@@ -412,33 +486,26 @@ topology:
       exec:
         - apk add --no-cache iproute2 tcpdump
         - sh -lc 'ip route del default via 172.20.20.1 dev eth0 || true'
-        - udhcpc -i eth1 -q
+        - ip addr add 120.0.37.100/24 dev eth1
+        - ip route replace default via 120.0.37.1 dev eth1
 
-    RESIDENTIAL-BOX:
+    CRISP-CLIENT:
       kind: linux
       image: alpine:latest
-      mgmt-ipv4: 172.20.20.53
-      cap-add:
-        - NET_ADMIN
-      binds:
-        - ./dhcp/residential/dnsmasq.conf:/etc/dnsmasq.conf
-        - ./dhcp/residential/setup-box.sh:/usr/local/bin/setup-box.sh
-      cmd: /bin/sh /usr/local/bin/setup-box.sh
-
-    NOMAD-CLIENT:
-      kind: linux
-      image: alpine:latest
-      mgmt-ipv4: 172.20.20.54
+      mgmt-ipv4: 172.20.20.56
       cmd: /bin/sh -lc "sleep infinity"
+      binds:
+        - ./scripts/udhcpc-resolvconf.sh:/opt/udhcpc-resolvconf.sh:ro
       exec:
-        - apk add --no-cache iproute2 tcpdump
+        - apk add --no-cache iproute2 tcpdump freeradius-utils
         - sh -lc 'ip route del default via 172.20.20.1 dev eth0 || true'
-        - udhcpc -i eth1 -q
+        - udhcpc -i eth1 -q -s /opt/udhcpc-resolvconf.sh
 
     # ---[OpenVPN]---------------------------------------------------------------
     # Pre-configured CPE: shipped to the nomad user, plugged into their home CE.
     # Single uplink (eth1) on net-home; default goes through home-ce, which
-    # NATs out toward net-isp. Dials the HQ public IP (203.0.113.50) over UDP/1194.
+    # NATs out toward net-nomad. Dials the CRISP DMZ IP (120.0.40.2) over UDP/1194,
+    # reached via the AS IGP (no public-IP middleman).
     ovpn-nomad:
       kind: linux
       mgmt-ipv4: 172.20.20.41
@@ -458,9 +525,9 @@ topology:
         - sysctl -w net.ipv4.ip_forward=1
         - openvpn --config /etc/openvpn/ovpn.conf --daemon
 
-    # HQ OpenVPN concentrator: dual-homed.
-    #   eth1 -> net-site (10.12.20.2/24)   inner / enterprise LAN
-    #   eth2 -> net-isp  (203.0.113.50/24) DMZ leg, listens on UDP/1194
+    # CRISP OpenVPN concentrator: single-homed in the DMZ.
+    #   eth1 -> net-crisp-dmz (120.0.40.2/24)   DMZ leg + UDP/1194 listener
+    # Reached from outside via the AS IGP (no dedicated public IP).
     ovpn-site:
       kind: linux
       mgmt-ipv4: 172.20.20.42
@@ -474,11 +541,19 @@ topology:
         - vpn/openvpn/site.conf:/etc/openvpn/ovpn.conf:ro
       exec:
         - apk add --no-cache openvpn iproute2
-        - ip addr add 10.12.20.2/24 dev eth1
-        - ip addr add 203.0.113.50/24 dev eth2
-        - ip route replace default via 10.12.20.1 dev eth1
+        - ip addr add 120.0.40.2/24 dev eth1
+        - ip route replace default via 120.0.40.1 dev eth1
         - sysctl -w net.ipv4.ip_forward=1
         - openvpn --config /etc/openvpn/ovpn.conf --daemon
+
+    dhcp-crisp:
+      kind: linux
+      image: gns3/dhcp:latest
+      cap-add:
+        - NET_ADMIN
+      binds:
+        - ./crisp/dnsmasq.conf:/opt/dhcp/dnsmasq.conf:ro
+      cmd: /bin/sh -lc "sleep 1; for i in {1..30}; do ip link set eth1 up 2>/dev/null && break; sleep 0.5; done; ip addr add 120.0.41.10/24 dev eth1 2>/dev/null || true; ip route add 10.12.30.0/24 via 120.0.41.1 dev eth1 2>/dev/null || true; mkdir -p /etc/dnsmasq.d; cp /opt/dhcp/dnsmasq.conf /etc/dnsmasq.d/crisp-dhcp.conf; dnsmasq --no-daemon --bind-dynamic --conf-file=/etc/dnsmasq.d/crisp-dhcp.conf"
 
     # Home CE router: simulates a consumer Internet box. NATs the home LAN
     # (192.168.1.0/24) out to the "Internet" (net-isp, 203.0.113.0/24).
@@ -488,12 +563,13 @@ topology:
       group: services
       cap-add:
         - NET_ADMIN
+      binds:
+        - ./scripts/udhcpc-resolvconf.sh:/opt/udhcpc-resolvconf.sh:ro
       exec:
-        - apk add --no-cache iproute2 iptables
-        - ip addr add 203.0.113.20/24 dev eth1     # WAN (net-isp)
+        - apk add --no-cache iproute2 iptables udhcpc
+        - sh -lc 'ip link set eth1 up; udhcpc -i eth1 -q -s /opt/udhcpc-resolvconf.sh || true'
         - ip addr add 192.168.1.1/24  dev eth2     # LAN (net-home)
         - sh -lc 'ip route del default via 172.20.20.1 dev eth0 || true'
-        - ip route replace default via 203.0.113.1 dev eth1
         - sysctl -w net.ipv4.ip_forward=1
         - iptables -t nat -A POSTROUTING -o eth1 -j MASQUERADE
 
@@ -508,13 +584,12 @@ topology:
         - voip/asterisk/sip.conf:/etc/asterisk/sip.conf
         - voip/asterisk/extensions.conf:/etc/asterisk/extensions.conf
       exec:
-        - sh -lc 'printf "nameserver 172.20.20.30\n" > /etc/resolv.conf'
-        - ip addr add 120.0.35.1/31 dev eth1
+        - sh -lc 'printf "nameserver 120.0.36.1\n" > /etc/resolv.conf'
+        - ip addr add 120.0.41.5/24 dev eth1
         - ip link set eth1 up
-        - ip route add 120.0.35.2/31 via 120.0.35.0
-        - ip route add 120.0.35.4/31 via 120.0.35.0
+        - ip route replace default via 120.0.41.1
 
-    phone-site:
+    phone-crisp1:
       kind: linux
       image: voip/client
       mgmt-ipv4: 172.20.20.32
@@ -523,12 +598,12 @@ topology:
         SIP_SERVER: "voip.corentinpradier.com"
         SIP_PASS: secret1
       exec:
-        - sh -lc 'printf "nameserver 172.20.20.30\n" > /etc/resolv.conf'
+        - sh -lc 'printf "nameserver 120.0.36.1\n" > /etc/resolv.conf'
         - ip link set eth1 up
-        - ip addr add 120.0.35.3/31 dev eth1
-        - ip route replace default via 120.0.35.2 dev eth1
+        - ip addr add 10.12.30.101/24 dev eth1
+        - ip route replace default via 10.12.30.1 dev eth1
 
-    phone-nomad:
+    phone-crisp2:
       kind: linux
       image: voip/client
       mgmt-ipv4: 172.20.20.33
@@ -537,10 +612,10 @@ topology:
         SIP_SERVER: "voip.corentinpradier.com"
         SIP_PASS: secret2
       exec:
-        - sh -lc 'printf "nameserver 172.20.20.30\n" > /etc/resolv.conf'
+        - sh -lc 'printf "nameserver 120.0.36.1\n" > /etc/resolv.conf'
         - ip link set eth1 up
-        - ip addr add 120.0.35.5/31 dev eth1
-        - ip route replace default via 120.0.35.4 dev eth1
+        - ip addr add 10.12.30.102/24 dev eth1
+        - ip route replace default via 10.12.30.1 dev eth1
 
 
     # ===[WEB]================================================================
@@ -550,15 +625,15 @@ topology:
       image: reverse-proxy:latest
       mgmt-ipv4: 172.20.20.34
       env:
-        NOMAD_NETWORK: "120.0.37.0/24"
-        SITE_NETWORK: "120.0.38.0/24"
+        NOMAD_NETWORK: "120.0.38.0/24"
+        SITE_NETWORK: "120.0.37.0/24"
+        VPN_CLIENT_NETWORK: "192.168.1.10/32"
+        CRISP_CLIENT_NETWORK: "10.12.30.0/24"
       exec:
-        - sh -lc 'printf "nameserver 172.20.20.30\n" > /etc/resolv.conf'
-        - ip addr add 120.0.34.9/31 dev eth1
+        - sh -lc 'printf "nameserver 120.0.36.1\n" > /etc/resolv.conf'
+        - ip addr add 120.0.40.3/24 dev eth1
         - ip link set eth1 up
-        - ip route add default via 120.0.34.8
-        - ip addr add 192.168.1.1/24 dev eth2
-        - ip link set eth2 up
+        - ip route replace default via 120.0.40.1
 
     # ----------------------------------------------------- Web servers
     web-server:
@@ -566,10 +641,10 @@ topology:
       image: web:latest
       mgmt-ipv4: 172.20.20.35
       exec:
-        - sh -lc 'printf "nameserver 172.20.20.30\n" > /etc/resolv.conf'
-        - ip addr add 192.168.1.2/24 dev eth1
+        - sh -lc 'printf "nameserver 120.0.36.1\n" > /etc/resolv.conf'
+        - ip addr add 120.0.40.4/24 dev eth1
         - ip link set eth1 up
-        - ip route add default via 192.168.1.1
+        - ip route replace default via 120.0.40.1
 
 
     # ===[HOSTS]==============================================================
@@ -577,18 +652,28 @@ topology:
     # Host/service bridges
     net-isp:
       kind: bridge      # "public Internet" — 203.0.113.0/24
+    dns-net:
+      kind: bridge      # DNS link on P1 — 120.0.36.0/31
+    dhcp-net:
+      kind: bridge      # DHCP link on P1 — 120.0.36.2/31
     net-nomad:
-      kind: bridge
+      kind: bridge      # direct PE-nomad client LAN — 120.0.38.0/24
     net-site:
-      kind: bridge      # HQ LAN behind PE-site — 10.12.20.0/24
+      kind: bridge      # enterprise client LAN behind PE-site — 120.0.37.0/24
+    net-crisp-dmz:
+      kind: bridge      # CRISP DMZ VLAN — 120.0.40.0/24
+    net-crisp-srv:
+      kind: bridge      # CRISP private services VLAN — 120.0.41.0/24
+    net-crisp-cli:
+      kind: bridge      # CRISP private client net — 10.12.30.0/24
     net-home:
       kind: bridge      # nomad's home LAN behind home-ce — 192.168.1.0/24
-    br-vlan104:
-      kind: bridge
+    breakout-trunk:
+      kind: bridge      # raw trunk toward the physical breakout switch
     br-vlan121:
-      kind: bridge
+      kind: bridge      # PE-nomad client LAN exposed on physical VLAN 121 — 120.0.38.0/24
     br-vlan122:
-      kind: bridge
+      kind: bridge      # physical breakout VLAN 122 toward PE-site
 
 
 
@@ -605,46 +690,48 @@ topology:
     - endpoints: ["P1:e1-10", "PE-isp:e1-1"]    # 120.0.34.0/31
     - endpoints: ["P2:e1-10", "PE-nomad:e1-1"]  # 120.0.34.2/31
     - endpoints: ["P3:e1-10", "PE-site:e1-1"]   # 120.0.34.4/31
-    - endpoints: ["P2:e1-4", "dns-as12:eth1"]   # 120.0.34.6/31
     - endpoints: ["P2:e1-5", "radius:eth1"]     # 120.0.34.10/31
 
-    # DHCP service segment
-    - endpoints: ["P3:e1-11", "dhcp:eth1"]
+    # Root DNS dedicated /30
+    - endpoints: ["PE-isp:e1-5", "dns-root:eth1"]  # 120.0.34.12/30
 
-    # Relayed DHCP Clients 
-    - endpoints: ["SITE-CLIENT:eth1",  "PE-site:e1-4"]
-    - endpoints: ["RESIDENTIAL-BOX:eth1", "PE-nomad:e1-4"]
-    - endpoints: ["NOMAD-CLIENT:eth1", "RESIDENTIAL-BOX:eth2"]
+    # P1 service links
+    - endpoints: ["P1:e1-9", "dns-net:p1-dns-port"]
+    - endpoints: ["dns-as12:eth1", "dns-net:dns-port"]
+    - endpoints: ["P1:e1-11", "dhcp-net:p1-dhcp-port"]
+    - endpoints: ["dhcp:eth1", "dhcp-net:dhcp-port"]
+
+    # Enterprise client access + CRISP LAN
+    - endpoints: ["SITE-CLIENT:eth1",  "net-site:site-client-port"]
+    - endpoints: ["ovpn-site:eth1",  "net-crisp-dmz:ovpn-site-port"]
+    - endpoints: ["reverse-proxy:eth1", "net-crisp-dmz:reverse-proxy-port"]
+    - endpoints: ["web-server:eth1", "net-crisp-dmz:web-server-port"]
+    - endpoints: ["pbx:eth1", "net-crisp-srv:pbx-port"]
+    - endpoints: ["dhcp-crisp:eth1", "net-crisp-srv:crisp-dhcp-port"]
+    - endpoints: ["CRISP:e1-2", "net-crisp-dmz:crisp-dmz-port"]
+    - endpoints: ["CRISP:e1-3", "net-crisp-srv:crisp-srv-port"]
+    - endpoints: ["CRISP:e1-4", "net-crisp-cli:crisp-client-port"]
+    - endpoints: ["CRISP-CLIENT:eth1", "net-crisp-cli:crisp-client-host-port"]
+    - endpoints: ["PE-nomad:e1-4", "br-vlan121:pe-nomad-vlan121"] # VLAN 121, 120.0.38.1/24
+    - endpoints: ["NOMAD-CLIENT:eth1", "br-vlan121:nomad-client-port"]
 
     # PE southbound to host bridges
     - endpoints: ["PE-isp:e1-2",   "net-isp:pe-isp-port"]    # 203.0.113.1/24 (public side)
-    - endpoints: ["PE-site:e1-2",  "net-site:pe-site-port"]  # 10.12.20.1/24  (HQ LAN)
+    - endpoints: ["PE-site:e1-2",  "net-site:pe-site-port"]  # 120.0.37.1/24 (enterprise client LAN)
+    - endpoints: ["PE-site:e1-5",  "br-vlan122:pe-site-vlan122"] # VLAN 122, 120.0.41.1/24
+    - endpoints: ["PE-site:e1-4",  "CRISP:e1-1"]  # 120.0.39.0/31 (PE-site <-> CRISP transit)
 
-    # HQ DMZ + LAN (ovpn-site is dual-homed)
-    - endpoints: ["ovpn-site:eth1",  "net-site:ovpn-site-port"]   # 10.12.20.2/24
-    - endpoints: ["ovpn-site:eth2",  "net-isp:ovpn-site-pub"]     # 203.0.113.50/24
-    - endpoints: ["test-site:eth1",  "net-site:test-site-port"]
-
-    # Public Internet ↔ home network (via the CE)
-    - endpoints: ["home-ce:eth1",    "net-isp:home-ce-wan"]       # 203.0.113.20/24
+    # Home CE WAN attached to the residential aggregation (PE-nomad)
+    - endpoints: ["home-ce:eth1",    "net-nomad:home-ce-wan"]      # DHCP WAN via PE-nomad (120.0.38.0/24)
     - endpoints: ["home-ce:eth2",    "net-home:home-ce-lan"]      # 192.168.1.1/24
 
     # Nomad CPE plugs into the home LAN
     - endpoints: ["ovpn-nomad:eth1", "net-home:ovpn-nomad-port"]  # 192.168.1.10/24
 
     # VoIP
-    - endpoints: ["P4:eth10",      "pbx:eth1"]          # 120.0.35.0/31
-    - endpoints: ["PE-site:e1-3",  "phone-site:eth1"]   # 120.0.35.2/31  intranet
-    - endpoints: ["PE-nomad:e1-3", "phone-nomad:eth1"]  # 120.0.35.4/31  externe
+    - endpoints: ["phone-crisp1:eth1",  "net-crisp-cli:phone-crisp1-port"]   # 10.12.30.101/24
+    - endpoints: ["phone-crisp2:eth1", "net-crisp-cli:phone-crisp2-port"]   # 10.12.30.102/24
 
-    # External breakout VLAN bridges. The host creates VLAN subinterfaces
-    # on one physical trunk NIC and enslaves them to these bridges.
-    - endpoints: ["P4:eth4",     "br-vlan104:p4-port"]      # VLAN 104
-    - endpoints: ["PE-isp:e1-3", "br-vlan121:pe-isp-a"]     # VLAN 121
-    - endpoints: ["PE-isp:e1-4", "br-vlan122:pe-isp-b"]     # VLAN 122
-
-    # Reverse proxy
-    - endpoints: ["P1:e1-9", "reverse-proxy:eth1"]
-
-    # Web servers
-    - endpoints: ["reverse-proxy:eth2", "web-server:eth1"]
+    # Physical breakout trunk for P4 BGP interconnect VLANs 1012/1213
+    - endpoints: ["P4:eth4", "breakout-trunk:p4-trunk"]
+  # end

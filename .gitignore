@@ -5,3 +5,4 @@ clab-enterprise-ospf-bgp
 # Local/proprietary virtual router images
 *.qcow2
 *.iso
+arista_veos_4.31.0F.tar.gz

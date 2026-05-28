@@ -8,8 +8,8 @@ $TTL 3600
 )
 
 @       IN NS    ns.corentinpradier.com.
-ns      IN A     120.0.34.7
-intranet IN A    172.20.20.34
-extranet IN A    172.20.20.34
-voip     IN A     120.0.35.1
+ns      IN A     120.0.36.1
+intranet IN A    120.0.40.3
+extranet IN A    120.0.40.3
+voip     IN A     120.0.41.5
 ; end of zone

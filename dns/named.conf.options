@@ -1,6 +1,9 @@
-acl "enterprise-nets" { 120.0.37.0/24; };
+acl "vpn-users" { 192.168.1.10/32; 10.255.255.0/30; };
+acl "crisp-employees" { 10.12.30.0/24; vpn-users; };
+acl "enterprise-nets" { crisp-employees; };
+acl "crisp-nets" { 120.0.40.0/24; 120.0.41.0/24; };
 acl "residential-nets" { 120.0.38.0/24; };
-acl "trusted" { enterprise-nets; residential-nets; };
+acl "trusted" { crisp-employees; residential-nets; };
 
 options {
   directory "/var/cache/bind";
@@ -10,10 +13,9 @@ options {
   allow-recursion { trusted; };
   allow-query { any; };
   dnssec-validation no;
-  forwarders {
-    1.1.1.1;
-    8.8.8.8;
-    120.0.48.34;
-  };
-  forward first;
+  // No global forwarders. We iterate from the lab root (see root.hints +
+  // `zone "."` hint in views.conf) so we never depend on any single peer
+  // AS DNS being up. To add public-Internet resolution later, declare a
+  // per-zone forward (e.g. `zone "com" { type forward; ... };`) instead
+  // of a global forwarder — keeping the lab zones on the iterative path.
 };

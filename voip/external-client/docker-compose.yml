@@ -1,0 +1,17 @@
+services:
+  phone-external:
+    build: .
+    image: voip/external-client
+    network_mode: host
+    environment:
+      SIP_USER: "1003"
+      SIP_SERVER: "voip.corentinpradier.com"
+      SIP_PASS: "secret3"
+    # The topology DNS server resolves voip.corentinpradier.com.
+    # With host networking the container uses the host's /etc/resolv.conf.
+    # If the host already has 120.0.36.1 as its nameserver you're done;
+    # otherwise add it: echo "nameserver 120.0.36.1" | sudo tee /etc/resolv.conf
+    #
+    # Alternatively override SIP_SERVER with the PBX IP directly:
+    #   SIP_SERVER: "120.0.41.5"
+    restart: unless-stopped

@@ -14,9 +14,9 @@ Simple web architecture with one reverse proxy and one backend web server.
 In this topology:
 
 - Reverse proxy mgmt IP: `172.20.20.34`
-- Reverse proxy service-side IP: `120.0.34.9/31`
-- Web server LAN behind proxy: `192.168.1.2`
-- DNS server for tests: `172.20.20.30`
+- Reverse proxy service-side IP: `120.0.40.3/24`
+- Web server IP: `120.0.40.4/24`
+- DNS server for tests: `120.0.36.1`
 
 ## Build and deploy
 
@@ -37,9 +37,9 @@ sudo containerlab deploy --topo topology.clab.yaml
 The public site should be reachable by IP and by DNS.
 
 ```bash
-docker exec clab-enterprise-ospf-bgp-test-site sh -lc 'wget -qO- http://172.20.20.34 | grep -m1 "Page web des fans de Corentin Pradier"'
-docker exec clab-enterprise-ospf-bgp-test-site sh -lc 'nslookup extranet.corentinpradier.com 172.20.20.30'
-docker exec clab-enterprise-ospf-bgp-test-site sh -lc 'wget -qO- --header="Host: extranet.corentinpradier.com" http://172.20.20.34 | grep -m1 "Page web des fans de Corentin Pradier"'
+docker exec clab-enterprise-ospf-bgp-CRISP-CLIENT sh -lc 'wget -qO- http://120.0.40.3 | grep -m1 "Page web des fans de Corentin Pradier"'
+docker exec clab-enterprise-ospf-bgp-CRISP-CLIENT sh -lc 'nslookup extranet.corentinpradier.com 120.0.36.1'
+docker exec clab-enterprise-ospf-bgp-CRISP-CLIENT sh -lc 'wget -qO- --header="Host: extranet.corentinpradier.com" http://120.0.40.3 | grep -m1 "Page web des fans de Corentin Pradier"'
 ```
 
 ### Intranet website
@@ -47,8 +47,9 @@ docker exec clab-enterprise-ospf-bgp-test-site sh -lc 'wget -qO- --header="Host:
 The intranet site should be reachable only from allowed enterprise/private ranges.
 
 ```bash
-docker exec clab-enterprise-ospf-bgp-SITE-CLIENT sh -lc 'nslookup intranet.corentinpradier.com 172.20.20.30'
-docker exec clab-enterprise-ospf-bgp-SITE-CLIENT sh -lc 'wget -qO- --header="Host: intranet.corentinpradier.com" http://172.20.20.34 | grep -m1 "Connexion Intranet"'
+docker exec clab-enterprise-ospf-bgp-SITE-CLIENT sh -lc 'nslookup intranet.corentinpradier.com 120.0.36.1'
+docker exec clab-enterprise-ospf-bgp-CRISP-CLIENT sh -lc 'nslookup intranet.corentinpradier.com 120.0.36.1'
+docker exec clab-enterprise-ospf-bgp-CRISP-CLIENT sh -lc 'wget -qO- --header="Host: intranet.corentinpradier.com" http://120.0.40.3 | grep -m1 "Connexion Intranet"'
 ```
 
 ## Quick debug
@@ -56,5 +57,5 @@ docker exec clab-enterprise-ospf-bgp-SITE-CLIENT sh -lc 'wget -qO- --header="Hos
 ```bash
 docker logs clab-enterprise-ospf-bgp-reverse-proxy | tail -n 100
 docker logs clab-enterprise-ospf-bgp-web-server | tail -n 100
-docker exec clab-enterprise-ospf-bgp-test-site sh -lc 'nslookup extranet.corentinpradier.com 172.20.20.30'
+docker exec clab-enterprise-ospf-bgp-CRISP-CLIENT sh -lc 'nslookup extranet.corentinpradier.com 120.0.36.1'
 ```

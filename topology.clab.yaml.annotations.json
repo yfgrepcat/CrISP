@@ -146,6 +146,10 @@
     {
       "id": "PE-site",
       "interfacePattern": "e1-{n}"
+    },
+    {
+      "id": "CRISP",
+      "interfacePattern": "e1-{n}"
     }
   ],
   "edgeAnnotations": [],
