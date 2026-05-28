@@ -11,5 +11,5 @@ $TTL 3600
 ns      IN A     120.0.36.1
 intranet IN A    120.0.40.3
 extranet IN A    120.0.40.3
-voip     IN A     120.0.40.5
+voip     IN A     120.0.41.5
 ; end of zone
