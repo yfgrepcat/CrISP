@@ -1,4 +1,15 @@
 #!/usr/bin/env bash
+# This script wraps create-host-bridges.sh to set up host bridges for connecting to a physical breakout switch.
+#
+# Requirements:
+#   - Must be run as root (or via sudo -E).
+#
+# Environment variables:
+#   TRUNK_IFACE          : The host network interface card connected to the physical switch trunk (REQUIRED).
+#
+# Usage:
+#   TRUNK_IFACE=<host-nic> sudo -E ./scripts/connect-breakout-trunk.sh
+
 set -euo pipefail
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"

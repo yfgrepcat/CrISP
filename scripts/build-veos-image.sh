@@ -1,4 +1,20 @@
 #!/usr/bin/env bash
+# This script automates building a Docker image for Arista vEOS using vrnetlab.
+# It clones the srl-labs/vrnetlab repository and packages the local 'hda.qcow2'
+# and 'cdrom.iso' files into a custom docker image tagged vrnetlab/arista_veos:4.31.0F.
+#
+# Requirements:
+#   - hda.qcow2 and cdrom.iso in the root directory.
+#   - docker installed and running.
+#
+# Environment variables:
+#   VRNETLAB_DIR : Path where srl-labs/vrnetlab is cloned (default: /tmp/vrnetlab).
+#   BUILD_DIR    : Temporary directory used for the build context (default: /tmp/veos-build-4310F).
+#   VEOS_IMAGE   : The final docker image tag (default: vrnetlab/arista_veos:4.31.0F).
+#
+# Usage:
+#   ./scripts/build-veos-image.sh
+
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"

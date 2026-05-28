@@ -1,4 +1,21 @@
 #!/usr/bin/env bash
+# This script creates the Linux host bridges and sets up the VLAN subinterfaces
+# needed by Containerlab to connect simulated network topologies to physical interfaces.
+#
+# Requirements:
+#   - Must be run as root.
+#
+# Environment variables:
+#   TRUNK_IFACE        : Host interface connected to the physical switch trunk (for VLAN-backed breakout).
+#   RAW_TRUNK_IFACE    : Host interface for raw trunk connections.
+#   P4_TRANSPORT_IFACE : Host interface for P4 transport.
+#   P4_TRANSPORT_VLAN  : VLAN ID used for P4 transport (default: 104).
+#   VLAN_IFACE_PREFIX  : Prefix for created VLAN subinterfaces (default: clab).
+#
+# Usage:
+#   sudo ./scripts/create-host-bridges.sh
+#   TRUNK_IFACE=<host-nic> sudo -E ./scripts/create-host-bridges.sh
+
 set -euo pipefail
 
 BRIDGES=(
@@ -7,21 +24,19 @@ BRIDGES=(
   dhcp-net
   net-nomad
   net-site
-  net-crisp
   net-crisp-dmz
   net-crisp-srv
   net-crisp-cli
   net-home
   breakout-trunk
-  br-vlan104
   br-vlan121
   br-vlan122
 )
 
-BREAKOUT_VLANS=(104 121 122)
+BREAKOUT_VLANS=(121 122)
 TRUNK_IFACE="${TRUNK_IFACE:-}"
 RAW_TRUNK_IFACE="${RAW_TRUNK_IFACE:-}"
-P4_TRANSPORT_IFACE="${P4_TRANSPORT_IFACE:-}"
+P4_TRANSPORT_IFACE="${P4_TRANSPORT_IFACE:-$TRUNK_IFACE}"
 P4_TRANSPORT_VLAN="${P4_TRANSPORT_VLAN:-104}"
 VLAN_IFACE_PREFIX="${VLAN_IFACE_PREFIX:-clab}"
 
@@ -86,11 +101,6 @@ if [[ -n "$TRUNK_IFACE" ]]; then
   ip link set dev "$TRUNK_IFACE" up
 
   for vlan in "${BREAKOUT_VLANS[@]}"; do
-    if [[ -n "$P4_TRANSPORT_IFACE" && "$vlan" == "$P4_TRANSPORT_VLAN" ]]; then
-      echo "Skipping VLAN $vlan in VLAN-backed breakout loop; it is used for P4 transport."
-      continue
-    fi
-
     vlan_iface="${VLAN_IFACE_PREFIX}${vlan}"
     bridge="br-vlan${vlan}"
 

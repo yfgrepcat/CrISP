@@ -39,12 +39,9 @@ This project focuses on building a multi-site enterprise network and setting up 
 ## First launch
 
 ```bash
-chmod +x set_bridges
-./set_bridges
-
-# Optional: create the extra bridges for the Arista P4 breakout trunk.
-# Set TRUNK_IFACE when the host NIC is connected to a physical switch trunk.
-TRUNK_IFACE=<your-host-nic> sudo -E ./scripts/create-host-bridges.sh
+# Create the required host bridges (specify TRUNK_IFACE if using a physical breakout switch trunk)
+# Example: TRUNK_IFACE=<your-host-nic> sudo -E ./scripts/create-host-bridges.sh
+sudo ./scripts/create-host-bridges.sh
 
 docker build -t reverse-proxy:latest ./web/reverse-proxy
 docker build -t web:latest ./web
@@ -64,8 +61,9 @@ sudo containerlab deploy --topo topology.clab.yaml
 ## Restart after a reboot
 
 ```bash
-./set_bridges
-TRUNK_IFACE=<your-host-nic> sudo -E ./scripts/connect-breakout-trunk.sh
+# Setup host bridges (specify TRUNK_IFACE and use connect-breakout-trunk.sh if using physical breakout trunk)
+# Example: TRUNK_IFACE=<your-host-nic> sudo -E ./scripts/connect-breakout-trunk.sh
+sudo ./scripts/create-host-bridges.sh
 sudo containerlab destroy --topo topology.clab.yaml --cleanup
 sudo containerlab deploy --topo topology.clab.yaml
 ```
@@ -91,8 +89,8 @@ The physical breakout trunk uses Linux VLAN subinterfaces on one host NIC:
 
 | VLAN | Linux interface | Host bridge | Containerlab endpoint |
 | --- | --- | --- | --- |
-| `104` | `clab104` | `br-vlan104` | `P4:Ethernet4` |
-| `121` | `clab121` | `br-vlan121` | `PE-isp:e1-3` |
+| `104` | `clab104` | `breakout-trunk` | `P4:Ethernet4` |
+| `121` | `clab121` | `br-vlan121` | `PE-nomad:e1-4` |
 | `122` | `clab122` | `br-vlan122` | `PE-site:e1-5` |
 
 Run:
@@ -100,6 +98,18 @@ Run:
 ```bash
 TRUNK_IFACE=<your-host-nic> sudo -E ./scripts/connect-breakout-trunk.sh
 ```
+
+### Configuration Options & Environment Variables
+
+The setup scripts ([create-host-bridges.sh](file:///home/tructruc00/cours/S8/projet-reseau/enterprise-network/scripts/create-host-bridges.sh) and [connect-breakout-trunk.sh](file:///home/tructruc00/cours/S8/projet-reseau/enterprise-network/scripts/connect-breakout-trunk.sh)) support several environment variables to customize physical network attachment:
+
+| Environment Variable | Description | Default / Example |
+| --- | --- | --- |
+| `TRUNK_IFACE` | Host interface connected to the physical switch trunk (VLAN-backed breakout mode). | (Required for VLAN mode) |
+| `RAW_TRUNK_IFACE` | Host interface to bridge directly to the raw trunk. | (Optional) |
+| `P4_TRANSPORT_IFACE` | Host interface specifically for P4 transport. | Defaults to `$TRUNK_IFACE` |
+| `P4_TRANSPORT_VLAN` | VLAN ID used for P4 transport. | `104` |
+| `VLAN_IFACE_PREFIX` | Prefix for the created host VLAN subinterfaces. | `clab` |
 
 ## Topology overview
 
@@ -177,12 +187,12 @@ flowchart TB
 
   %% --- external breakout trunk ---
   subgraph TRUNK["External breakout trunk"]
-    BR104{{"br-vlan104<br/>VLAN 104"}}
+    BR104{{"breakout-trunk<br/>transport VLAN 104"}}
     BR121{{"br-vlan121<br/>VLAN 121"}}
     BR122{{"br-vlan122<br/>VLAN 122"}}
   end
   P4 --- BR104
-  PEisp --- BR121
+  PEnomad --- BR121
   PEsite --- BR122
 ```
 
@@ -250,7 +260,7 @@ Exact interface addressing for the CRISP head router, its DMZ, and its private c
 | `PE-site:e1-4` ↔ `CRISP:e1-1` | `PE-site = 120.0.39.0/31`, `CRISP = 120.0.39.1/31` |
 | `CRISP:e1-2` ↔ `net-crisp-dmz` | `CRISP = 120.0.40.1/24`, `ovpn-site = 120.0.40.2/24`, `reverse-proxy = 120.0.40.3/24`, `web-server = 120.0.40.4/24` |
 | `CRISP:e1-3` ↔ `net-crisp-srv` | `CRISP = 120.0.41.1/24`, `pbx = 120.0.41.5/24`, `dhcp-crisp = 120.0.41.10/24` |
-| `CRISP:e1-4` ↔ `net-crisp-client` | `CRISP = 10.12.30.1/24`, `CRISP-CLIENT = DHCP 10.12.30.100-200/24`, `phone-crisp1 = 10.12.30.101/24`, `phone-crisp2 = 10.12.30.102/24` |
+| `CRISP:e1-4` ↔ `net-crisp-cli` | `CRISP = 10.12.30.1/24`, `CRISP-CLIENT = DHCP 10.12.30.100-200/24`, `phone-crisp1 = 10.12.30.101/24`, `phone-crisp2 = 10.12.30.102/24` |
 
 What this means:
 
