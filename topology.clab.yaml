@@ -644,8 +644,6 @@ topology:
     br-vlan122:
       kind: bridge      # physical breakout VLAN 122 toward PE-site
 
-
-
   links:
     # IGP Full Mesh Core
     - endpoints: ["P1:e1-1", "P2:e1-1"]   # 120.0.33.0/31

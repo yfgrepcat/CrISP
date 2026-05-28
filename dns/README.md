@@ -305,8 +305,8 @@ We do not specify address of DNS as it should be given by DHCP configuration.
 
 ```bash
 docker exec clab-enterprise-ospf-bgp-CRISP-CLIENT sh -lc 'nslookup intranet.corentinpradier.com'
-docker exec clab-enterprise-ospf-bgp-NOMAD-CLIENT sh -lc 'nslookup intranet.corentinpradier.com 120.0.36.1 || true'
-docker exec clab-enterprise-ospf-bgp-ovpn-nomad sh -lc 'nslookup intranet.corentinpradier.com 120.0.36.1'
+docker exec clab-enterprise-ospf-bgp-NOMAD-CLIENT sh -lc 'nslookup intranet.corentinpradier.com'
+docker exec clab-enterprise-ospf-bgp-ovpn-nomad sh -lc 'nslookup intranet.corentinpradier.com'
 ```
 
 Expected:
@@ -319,7 +319,7 @@ Address:        120.0.36.1#53
 Name:   intranet.corentinpradier.com
 Address: 120.0.40.3
 
-t70n@t70n-workstation:~/Documents/crisp$ docker exec clab-enterprise-ospf-bgp-NOMAD-CLIENT sh -lc 'nslookup intranet.corentinpradier.com 120.0.36.1 || true'
+t70n@t70n-workstation:~/Documents/crisp$ docker exec clab-enterprise-ospf-bgp-NOMAD-CLIENT sh -lc 'nslookup intranet.corentinpradier.com''
 Server:         120.0.36.1
 Address:        120.0.36.1:53
 
@@ -327,6 +327,6 @@ Address:        120.0.36.1:53
 
 ** server can't find intranet.corentinpradier.com: NXDOMAIN
 
-t70n@t70n-workstation:~/Documents/crisp$ docker exec clab-enterprise-ospf-bgp-ovpn-nomad sh -lc 'nslookup intranet.corentinpradier.com 120.0.36.1'
+t70n@t70n-workstation:~/Documents/crisp$ docker exec clab-enterprise-ospf-bgp-ovpn-nomad sh -lc 'nslookup intranet.corentinpradier.com'
 ;; connection timed out; no servers could be reached
 ```
