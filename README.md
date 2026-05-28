@@ -148,7 +148,7 @@ flowchart TB
     SITEC["SITE-CLIENT"]
     PHs["phone-crisp1<br/>120.0.35.3"]
     NETSITE{{"net-site<br/>10.12.20.0/24"}}
-    OVPNs["ovpn-site<br/>.2 + 203.0.113.50"]
+    OVPNs["ovpn-site<br/>120.0.40.2 (DMZ, UDP/1194)"]
   end
   PEsite ---|"120.0.37.0/24"| SITEC
   PEsite ---|"120.0.35.2/31"| PHs
@@ -159,22 +159,21 @@ flowchart TB
   subgraph RES["Nomad access"]
     NOMADC["NOMAD-CLIENT"]
     PHn["phone-crisp2<br/>120.0.35.5"]
-  end
-  PEnomad ---|"120.0.38.0/24"| NOMADC
-  PEnomad ---|"120.0.35.4/31"| PHn
-
-  %% --- Internet + nomad home ---
-  subgraph NET["Public Internet + nomad home"]
-    NETISP{{"net-isp<br/>203.0.113.0/24"}}
-    HOMECE["home-ce (NAT)<br/>.20 + 192.168.1.1"]
+    HOMECE["home-ce (NAT)<br/>DHCP 120.0.38.x + 192.168.1.1"]
     NETHOME{{"net-home<br/>192.168.1.0/24"}}
     OVPNn["ovpn-nomad<br/>192.168.1.10"]
   end
-  PEisp ---|"203.0.113.1"| NETISP
-  OVPNs ---|"203.0.113.50"| NETISP
-  NETISP ---|"203.0.113.20"| HOMECE
+  PEnomad ---|"120.0.38.0/24"| NOMADC
+  PEnomad ---|"120.0.35.4/31"| PHn
+  PEnomad ---|"DHCP"| HOMECE
   HOMECE ---|"192.168.1.1"| NETHOME
   NETHOME ---|"192.168.1.10"| OVPNn
+
+  %% --- eBGP-facing public segment (no VPN traffic here) ---
+  subgraph NET["Public segment (eBGP-facing)"]
+    NETISP{{"net-isp<br/>203.0.113.0/24"}}
+  end
+  PEisp ---|"203.0.113.1"| NETISP
 
   %% --- external breakout trunk ---
   subgraph TRUNK["External breakout trunk"]
@@ -226,7 +225,7 @@ flowchart LR
   %% --- site-to-nomad VPN overlay ---
   subgraph VPN["Site-to-nomad VPN (10.255.255.0/30)"]
     OVPNn["ovpn-nomad (CPE)<br/>192.168.1.10"]
-    OVPNs["ovpn-site (HQ)<br/>203.0.113.50"]
+    OVPNs["ovpn-site (HQ DMZ)<br/>120.0.40.2"]
   end
   OVPNn <-- "OpenVPN UDP/1194" --> OVPNs
   OVPNs -- "reaches HQ LAN 10.12.20.0/24" --> HQLAN["HQ hosts<br/>10.12.20.100"]
