@@ -239,6 +239,7 @@ How it works (short version):
 - VoIP phones `phone-crisp1` and `phone-crisp2` register to PBX (`120.0.41.5`) and call each other across the CRISP client net.
 - VPN links nomad side to CRISP: `ovpn-nomad` reaches `ovpn-site` over public `203.0.113.0/24`, then into the CRISP DMZ (`120.0.40.0/24`) and the protected DNS endpoint (`120.0.36.1`).
 - RADIUS (`120.0.34.11`) authenticates router logins; the Arista `P4` is the NAS and maps authenticated users (`alice`/`bob`) to privilege level 15.
+- RADIUS is not on the CRISP service VLAN; it is on the P2 service link (`120.0.34.10/31`) and is reachable from AS12 plus the CRISP employee client net (`10.12.30.0/24`).
 
 ### PE-site / CRISP topology
 

@@ -498,7 +498,7 @@ topology:
       binds:
         - ./scripts/udhcpc-resolvconf.sh:/opt/udhcpc-resolvconf.sh:ro
       exec:
-        - apk add --no-cache iproute2 tcpdump
+        - apk add --no-cache iproute2 tcpdump freeradius-utils
         - sh -lc 'ip route del default via 172.20.20.1 dev eth0 || true'
         - udhcpc -i eth1 -q -s /opt/udhcpc-resolvconf.sh
 
