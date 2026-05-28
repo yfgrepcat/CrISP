@@ -416,11 +416,12 @@ topology:
       image: alpine:latest
       mgmt-ipv4: 172.20.20.54
       cmd: /bin/sh -lc "sleep infinity"
+      binds:
+        - ./scripts/udhcpc-resolvconf.sh:/opt/udhcpc-resolvconf.sh:ro
       exec:
-        - sh -lc 'printf "nameserver 120.0.36.1\n" > /etc/resolv.conf'
         - apk add --no-cache iproute2 tcpdump
         - sh -lc 'ip route del default via 172.20.20.1 dev eth0 || true'
-        - udhcpc -i eth1 -q
+        - udhcpc -i eth1 -q -s /opt/udhcpc-resolvconf.sh
 
     # ---[RADIUS]----------------------------------------------------------------
     # Minimal FreeRADIUS server hung off P2 (120.0.34.10/31, RADIUS = .11).
@@ -456,11 +457,12 @@ topology:
       image: alpine:latest
       mgmt-ipv4: 172.20.20.56
       cmd: /bin/sh -lc "sleep infinity"
+      binds:
+        - ./scripts/udhcpc-resolvconf.sh:/opt/udhcpc-resolvconf.sh:ro
       exec:
-        - sh -lc 'printf "nameserver 120.0.36.1\n" > /etc/resolv.conf'
         - apk add --no-cache iproute2 tcpdump
         - sh -lc 'ip route del default via 172.20.20.1 dev eth0 || true'
-        - udhcpc -i eth1 -q
+        - udhcpc -i eth1 -q -s /opt/udhcpc-resolvconf.sh
 
     # ---[OpenVPN]---------------------------------------------------------------
     # Pre-configured CPE: shipped to the nomad user, plugged into their home CE.
@@ -524,9 +526,11 @@ topology:
       group: services
       cap-add:
         - NET_ADMIN
+      binds:
+        - ./scripts/udhcpc-resolvconf.sh:/opt/udhcpc-resolvconf.sh:ro
       exec:
         - apk add --no-cache iproute2 iptables udhcpc
-        - sh -lc 'ip link set eth1 up; udhcpc -i eth1 -q || true'
+        - sh -lc 'ip link set eth1 up; udhcpc -i eth1 -q -s /opt/udhcpc-resolvconf.sh || true'
         - ip addr add 192.168.1.1/24  dev eth2     # LAN (net-home)
         - sh -lc 'ip route del default via 172.20.20.1 dev eth0 || true'
         - sysctl -w net.ipv4.ip_forward=1

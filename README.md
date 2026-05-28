@@ -54,7 +54,7 @@ make build
 cd ..
 
 # Load the Arista vEOS image (vrnetlab/arista_veos:4.31.0F) — see "Arista vEOS image".
-docker load -i arista_veos_4.31.0F.tar.gz
+docker load -i arista_veos_4.31.0F.tar.gz§
 # (or build it yourself: ./scripts/build-veos-image.sh)
 
 sudo containerlab destroy --topo topology.clab.yaml --cleanup
@@ -156,13 +156,11 @@ flowchart TB
   NETSITE ---|".2"| OVPNs
 
   %% --- residential access ---
-  subgraph RES["Residential access"]
-    RBOX["RESIDENTIAL-BOX"]
+  subgraph RES["Nomad access"]
     NOMADC["NOMAD-CLIENT"]
     PHn["phone-crisp2<br/>120.0.35.5"]
   end
-  PEnomad ---|"120.0.38.0/24"| RBOX
-  RBOX --- NOMADC
+  PEnomad ---|"120.0.38.0/24"| NOMADC
   PEnomad ---|"120.0.35.4/31"| PHn
 
   %% --- Internet + nomad home ---

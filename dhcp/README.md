@@ -25,6 +25,49 @@ Relay is configured on:
 
 It relays to `120.0.36.3` and sets `giaddr` so `dnsmasq` picks the right pool.
 
+## How DHCP-derived DNS works
+
+The DHCP servers already advertise `option:dns-server,120.0.36.1`, but that alone is not enough on Alpine-based clients because Docker keeps its own generated `/etc/resolv.conf` unless the DHCP client updates it.
+
+To make the DNS server come from DHCP instead of a hard-coded bootstrap, the DHCP clients now run `udhcpc` with the repository hook in `scripts/udhcpc-resolvconf.sh`.
+
+That hook does two things when a lease is received:
+
+- configures the leased IPv4 address on `eth1`
+- writes the DHCP-provided `dns` list into `/etc/resolv.conf`
+
+This is what makes `nslookup intranet.corentinpradier.com` work without passing `120.0.36.1` explicitly.
+
+Affected clients:
+
+- `CRISP-CLIENT`
+- `NOMAD-CLIENT`
+- `home-ce`
+
+The hook is mounted into those containers from [scripts/udhcpc-resolvconf.sh](../scripts/udhcpc-resolvconf.sh).
+
+## Verify DHCP-provided DNS
+
+Use these commands to confirm that DNS is coming from the DHCP lease and not from a static bootstrap:
+
+```bash
+docker exec clab-enterprise-ospf-bgp-CRISP-CLIENT cat /etc/resolv.conf
+docker exec clab-enterprise-ospf-bgp-CRISP-CLIENT nslookup intranet.corentinpradier.com
+
+docker exec clab-enterprise-ospf-bgp-NOMAD-CLIENT cat /etc/resolv.conf
+docker exec clab-enterprise-ospf-bgp-NOMAD-CLIENT nslookup voip.corentinpradier.com
+
+docker exec clab-enterprise-ospf-bgp-home-ce cat /etc/resolv.conf
+docker exec clab-enterprise-ospf-bgp-home-ce ip addr show eth1
+docker exec clab-enterprise-ospf-bgp-home-ce ip route
+```
+
+Expected result:
+
+- `CRISP-CLIENT` resolves `intranet.corentinpradier.com` through `120.0.36.1`
+- `NOMAD-CLIENT` uses the DHCP-provided resolver when resolving public names such as `voip.corentinpradier.com`
+- `home-ce` shows a DHCP-populated `resolv.conf` on the WAN side
+
 ## CRISP DHCP service
 
 CRISP also has a small DHCP server in the DMZ for the private client net.
@@ -48,16 +91,15 @@ docker exec clab-enterprise-ospf-bgp-CRISP-CLIENT ping -c 3 120.0.40.10
 docker exec clab-enterprise-ospf-bgp-dhcp-crisp cat /var/lib/misc/dnsmasq.leases
 ```
 
-## Residential box behavior
+## Home CE behavior
 
-`RESIDENTIAL-BOX` is a small consumer-gateway simulation:
+`home-ce` is the residential edge router in the topology:
 
 - WAN on `eth1`: gets an address in `120.0.38.0/24` via central DHCP
 - LAN on `eth2`: `192.168.1.1/24`
-- Local DHCP/DNS on LAN via `dnsmasq` (`192.168.1.100-192.168.1.200`)
 - NAT enabled from LAN to WAN (`MASQUERADE` on `eth1`)
 
-The box bootstrap script is in `dhcp/residential/setup-box.sh`.
+It uses the shared DHCP hook in [scripts/udhcpc-resolvconf.sh](../scripts/udhcpc-resolvconf.sh) so the WAN-side resolver also comes from the DHCP lease.
 
 ## Quick checks
 
@@ -81,10 +123,10 @@ sudo containerlab deploy --topo topology.clab.yaml
 2. Confirm the expected containers exist and `TESTCLIENT` is not present.
 
 ```bash
-docker ps --format '{{.Names}}' | grep -E 'TESTCLIENT|SITE-CLIENT|NOMAD-CLIENT|RESIDENTIAL-BOX|dhcp'
+docker ps --format '{{.Names}}' | grep -E 'TESTCLIENT|SITE-CLIENT|NOMAD-CLIENT|home-ce|dhcp'
 ```
 
-Expected result: `SITE-CLIENT`, `NOMAD-CLIENT`, `RESIDENTIAL-BOX`, and `dhcp` appear; `TESTCLIENT` does not.
+Expected result: `SITE-CLIENT`, `NOMAD-CLIENT`, `home-ce`, and `dhcp` appear; `TESTCLIENT` does not.
 
 3. Check relay clients receive addresses and routes.
 
@@ -104,32 +146,32 @@ docker logs clab-enterprise-ospf-bgp-dhcp | tail -n 50
 docker exec clab-enterprise-ospf-bgp-dhcp cat /var/lib/misc/dnsmasq.leases
 ```
 
-5. If residential path is in scope, validate residential gateway bootstrap and downstream behavior.
+5. If residential path is in scope, validate the home CE bootstrap and downstream behavior.
 
 ```bash
-docker exec clab-enterprise-ospf-bgp-RESIDENTIAL-BOX ip addr show eth1
-docker exec clab-enterprise-ospf-bgp-RESIDENTIAL-BOX ip addr show eth2
-docker exec clab-enterprise-ospf-bgp-RESIDENTIAL-BOX ip route
+docker exec clab-enterprise-ospf-bgp-home-ce ip addr show eth1
+docker exec clab-enterprise-ospf-bgp-home-ce ip addr show eth2
+docker exec clab-enterprise-ospf-bgp-home-ce ip route
 docker exec clab-enterprise-ospf-bgp-NOMAD-CLIENT ping -c 3 120.0.36.3
 ```
 
-6. Validate DNS reachability from the direct PE-nomad client.
+6. Validate DNS reachability from the DHCP-backed clients.
 
 ```bash
+docker exec clab-enterprise-ospf-bgp-CRISP-CLIENT cat /etc/resolv.conf
+docker exec clab-enterprise-ospf-bgp-CRISP-CLIENT nslookup intranet.corentinpradier.com
+
+docker exec clab-enterprise-ospf-bgp-NOMAD-CLIENT cat /etc/resolv.conf
+docker exec clab-enterprise-ospf-bgp-NOMAD-CLIENT nslookup voip.corentinpradier.com
+
+docker exec clab-enterprise-ospf-bgp-home-ce cat /etc/resolv.conf
 docker exec clab-enterprise-ospf-bgp-NOMAD-CLIENT nslookup intranet.corentinpradier.com 120.0.36.1
 docker exec clab-enterprise-ospf-bgp-NOMAD-CLIENT nslookup voip.corentinpradier.com 120.0.36.1
 docker exec clab-enterprise-ospf-bgp-NOMAD-CLIENT ping -c 3 120.0.36.1
 docker exec clab-enterprise-ospf-bgp-NOMAD-CLIENT ping -c 3 120.0.36.3
 ```
 
-## Residential lease inspection
-
-Check whether a LAN client lease exists on central and residential DHCP servers:
-
-```bash
-docker exec clab-enterprise-ospf-bgp-dhcp grep 192.168.1.168 /var/lib/misc/dnsmasq.leases || true
-docker exec clab-enterprise-ospf-bgp-RESIDENTIAL-BOX grep 192.168.1.168 /var/lib/misc/dnsmasq.leases || true
-```
+Expected result: `cat /etc/resolv.conf` shows `nameserver 120.0.36.1` on the DHCP-backed clients, and the lookups succeed without needing to pass `120.0.36.1` explicitly.
 
 ## Packet capture (optional)
 
