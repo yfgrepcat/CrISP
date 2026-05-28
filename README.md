@@ -38,7 +38,7 @@ This project focuses on building a multi-site enterprise network and setting up 
 
 ### Topology
 
-![Logo](rsc/crisp.png)
+![Logo](rsc/topo.jpg)
 
 ## First launch
 
