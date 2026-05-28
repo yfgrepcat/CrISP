@@ -28,6 +28,7 @@ voip/
 
 ### Network topology
 
+Outdated:
 ![architecture PBX softphones](resources/archi.png)
 
 The PBX runs in the CRISP SVC VLAN (`120.0.41.5/24`). Both phones sit in the CRISP LAN (`10.12.30.0/24`) and reach the PBX through the CRISP router.
@@ -54,14 +55,6 @@ Check registration status from a phone console:
 ```text
 /reginfo
 ```
-
-## Build and deploy
-
-```bash
-cd voip
-make build
-```
-Then deploy, the topology normally (terminal or VScode extension)
 
 ## Test
 
@@ -99,7 +92,64 @@ End the call from either side:
 
 Detach from a phone console without stopping it: `Ctrl+C`.
 
----
+Expected results:
+
+* Phone1: 
+
+```bash
+t70n@t70n-workstation:~/Documents/crisp$ cd voip
+make phone-crisp1
+docker attach --detach-keys="ctrl-c" clab-enterprise-ospf-bgp-phone-crisp1
+/dial 1002
+ua: using best effort AF: af=AF_INET
+call: connecting to 'sip:1002@voip.corentinpradier.com;transport=udp'..
+call: SIP Progress: 100 Trying (/)
+call: SIP Progress: 180 Ringing (/)
+stream: update 'audio'
+audio: Set audio decoder: PCMU 8000Hz 1ch
+audio: Set audio encoder: PCMU 8000Hz 1ch
+audio tx pipeline:       (src) ---> PCMU
+audio rx pipeline:      (play) <--- PCMU
+1001@voip.corentinpradier.com: Call established: sip:1002@voip.corentinpradier.com;transport=udp
+call: got re-INVITE (SDP Offer)
+stream: update 'audio'
+ua: using best effort AF: af=AF_INET
+/hangup5] audio=0/0 (bit/s)    
+call: terminate call '408347f913a34eaa' with sip:1002@voip.corentinpradier.com;transport=udp
+sip:1001@voip.corentinpradier.com: Call with sip:1002@voip.corentinpradier.com;transport=udp terminated (duration: 5 secs)
+read escape sequence
+make: *** [Makefile:6: phone-crisp1] Error 1
+t70n@t70n-workstation:~/Documents/crisp/voip$ 
+```
+
+* Phone2: 
+
+```bash
+t70n@t70n-workstation:~/Documents/crisp$ cd voip
+make phone-crisp2
+docker attach --detach-keys="ctrl-c" clab-enterprise-ospf-bgp-phone-crisp2
+ua: using AF from sdp offer: af=AF_INET
+sip:1002@voip.corentinpradier.com: Incoming call from: Phone1 sip:1001@120.0.41.5 - (press 'a' to accept)
+/accept
+sip:1002@voip.corentinpradier.com: Answering incoming call
+call: answering call on line 1 from sip:1001@120.0.41.5 with 200
+stream: update 'audio'
+audio: Set audio decoder: PCMU 8000Hz 1ch
+audio: Set audio encoder: PCMU 8000Hz 1ch
+audio tx pipeline:       (src) ---> PCMU
+audio rx pipeline:      (play) <--- PCMU
+1002@voip.corentinpradier.com: Call established: sip:1001@120.0.41.5
+call: got re-INVITE (SDP Offer)
+stream: update 'audio'
+ua: using best effort AF: af=AF_INET
+call: got re-INVITE (SDP Offer)
+stream: update 'audio'
+sip:1001@120.0.41.5: session closed: Connection reset by peer
+sip:1002-0x5629afb1fcf0@10.12.30.102:5060: Call with sip:1001@120.0.41.5 terminated (duration: 5 secs)
+read escape sequence
+make: *** [Makefile:9: phone-crisp2] Error 1
+t70n@t70n-workstation:~/Documents/crisp/voip$ 
+```
 
 ## External client (ext. 1003)
 
@@ -107,7 +157,9 @@ Detach from a phone console without stopping it: `Ctrl+C`.
 
 The external machine must be able to reach the PBX at `120.0.41.5` (CRISP SVC VLAN).
 
-DNS resolution of `voip.corentinpradier.com` requires the topology DNS server (`120.0.36.1`) to be reachable. Add it to the host's resolver:
+DNS resolution of `voip.corentinpradier.com` requires the topology DNS server (`120.0.36.1`) to be reachable. 
+
+Add it to the host's resolver if no DNS is set on the host (should not append with great DHCP configuration)
 
 ```bash
 echo "nameserver 120.0.36.1" | sudo tee /etc/resolv.conf

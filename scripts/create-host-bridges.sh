@@ -19,7 +19,6 @@
 set -euo pipefail
 
 BRIDGES=(
-  net-isp
   dns-net
   dhcp-net
   net-nomad

@@ -51,7 +51,7 @@ make build
 cd ..
 
 # Load the Arista vEOS image (vrnetlab/arista_veos:4.31.0F) — see "Arista vEOS image".
-docker load -i arista_veos_4.31.0F.tar.gz§
+docker load -i arista_veos_4.31.0F.tar.gz
 # (or build it yourself: ./scripts/build-veos-image.sh)
 
 sudo containerlab destroy --topo topology.clab.yaml --cleanup
@@ -138,7 +138,7 @@ flowchart TB
   RP["reverse-proxy<br/>120.0.34.9"]
   WEB["web-server<br/>192.168.1.2"]
   DNS["dns-as12<br/>120.0.36.1"]
-  RADIUS["radius<br/>120.0.34.11"]
+  RADIUS["radius<br/>120.0.41.11"]
   DHCP["dhcp<br/>120.0.36.3"]
   PBX["pbx<br/>120.0.35.1"]
   P1 ---|"120.0.34.8/31"| RP
@@ -149,7 +149,6 @@ flowchart TB
   P4 ---|"120.0.35.0/31"| PBX
 
   %% --- PE routers ---
-  P1 ---|"120.0.34.0/31"| PEisp["PE-isp"]
   P2 ---|"120.0.34.2/31"| PEnomad["PE-nomad"]
   P3 ---|"120.0.34.4/31"| PEsite["PE-site"]
 
@@ -178,12 +177,6 @@ flowchart TB
   PEnomad ---|"DHCP"| HOMECE
   HOMECE ---|"192.168.1.1"| NETHOME
   NETHOME ---|"192.168.1.10"| OVPNn
-
-  %% --- eBGP-facing public segment (no VPN traffic here) ---
-  subgraph NET["Public segment (eBGP-facing)"]
-    NETISP{{"net-isp<br/>203.0.113.0/24"}}
-  end
-  PEisp ---|"203.0.113.1"| NETISP
 
   %% --- external breakout trunk ---
   subgraph TRUNK["External breakout trunk"]
@@ -217,7 +210,7 @@ flowchart LR
     PBX["VoIP PBX Asterisk<br/>voip.corentinpradier.com<br/>120.0.35.1"]
     RP["reverse-proxy<br/>120.0.34.9"]
     WEB["web-server<br/>192.168.1.2"]
-    RADIUS["RADIUS FreeRADIUS<br/>120.0.34.11"]
+    RADIUS["RADIUS FreeRADIUS<br/>120.0.41.11"]
   end
 
   SITEC -. "DHCP (PE-site relay)" .-> DHCP
@@ -247,9 +240,9 @@ How it works (short version):
 - DNS (`120.0.36.1`) and DHCP (`120.0.36.3`) sit on P1 as separate /31 links; DHCP serves the relayed nomad pool, and `PE-nomad` relays residential clients.
 - DNS (`120.0.36.1`) answers with different views depending on client subnet (`10.12.30.0/24` and the VPN CPE `192.168.1.10/32` for intranet, `120.0.38.0/24` for residential, or default/public for everyone else).
 - VoIP phones `phone-crisp1` and `phone-crisp2` register to PBX (`120.0.41.5`) and call each other across the CRISP client net.
-- VPN links nomad side to CRISP: `ovpn-nomad` reaches `ovpn-site` over public `203.0.113.0/24`, then into the CRISP DMZ (`120.0.40.0/24`) and the protected DNS endpoint (`120.0.36.1`).
-- RADIUS (`120.0.34.11`) authenticates router logins; the Arista `P4` is the NAS and maps authenticated users (`alice`/`bob`) to privilege level 15.
-- RADIUS is not on the CRISP service VLAN; it is on the P2 service link (`120.0.34.10/31`) and is reachable from AS12 plus the CRISP employee client net (`10.12.30.0/24`).
+- VPN links nomad side to CRISP through `home-ce` NAT and the enterprise routing domain, then into the CRISP DMZ (`120.0.40.0/24`) and the protected DNS endpoint (`120.0.36.1`).
+- RADIUS (`120.0.41.11`) authenticates router logins; the Arista `P4` is the NAS and maps authenticated users (`alice`/`bob`) to privilege level 15.
+- RADIUS sits on the CRISP private services VLAN (`120.0.41.0/24`) and is reachable from the CRISP employee client net (`10.12.30.0/24`) plus the nomad VPN CPE (`192.168.1.10/32`).
 
 ### PE-site / CRISP topology
 
@@ -262,6 +255,7 @@ Exact interface addressing for the CRISP head router, its DMZ, and its private c
 | `CRISP:e1-2` ↔ `net-crisp-dmz` | `CRISP = 120.0.40.1/24`, `ovpn-site = 120.0.40.2/24`, `reverse-proxy = 120.0.40.3/24`, `web-server = 120.0.40.4/24` |
 | `CRISP:e1-3` ↔ `net-crisp-srv` | `CRISP = 120.0.41.1/24`, `pbx = 120.0.41.5/24`, `dhcp-crisp = 120.0.41.10/24` |
 | `CRISP:e1-4` ↔ `net-crisp-cli` | `CRISP = 10.12.30.1/24`, `CRISP-CLIENT = DHCP 10.12.30.100-200/24`, `phone-crisp1 = 10.12.30.101/24`, `phone-crisp2 = 10.12.30.102/24` |
+| `P2:e1-11` ↔ `dns-root` | `P2 = 120.0.36.4/31`, `dns-root = 120.0.36.5/31` |
 
 What this means:
 
@@ -271,6 +265,7 @@ What this means:
 - The private services VLAN on `120.0.41.0/24` hosts `pbx` and the CRISP DHCP server.
 - The private client net on `10.12.30.0/24` hosts the CRISP client PC and the two softphones.
 - `dhcp-crisp` in the DMZ hands out `10.12.30.100-200/24` to the client net, with gateway `10.12.30.1` and DNS `120.0.36.1`.
+- `dns-root` now sits on `P2:e1-11` at `120.0.36.5/31`; no public Internet segment is modeled anymore.
 
 ## DHCP service
 
@@ -283,11 +278,11 @@ The OpenVPN nomad CPE is documented in [vpn/README.md](vpn/README.md).
 ## DNS service
 
 The DNS architecture, views/ACL behavior, and validation commands are documented in [dns/README.md](dns/README.md).
-
+  docker exec clab-enterprise-ospf-bgp-CRISP-CLIENT radtest alice wrongpw  120.0.41.11 0 testing123
 ## Web service
 
 The web architecture and validation commands are documented in [web/README.md](web/README.md).
-
+  docker exec clab-enterprise-ospf-bgp-CRISP-CLIENT radtest alice alice123 120.0.41.11 0 testing123
 ## VoIP service
 
 The VoIP architecture and smoke test procedure are documented in [voip/README.md](voip/README.md).
@@ -298,7 +293,7 @@ The CRISP router, DMZ, and private client network are documented in [crisp/READM
 
 ## RADIUS service
 
-A minimal FreeRADIUS server (node `radius`, service IP `120.0.34.11`, hung off `P2`) provides authentication for the AS. Two test users live in `radius/authorize` — `alice`/`alice123` and `bob`/`bob123` — and the shared secret for every NAS client is `testing123`. The Arista router `P4` is configured as a RADIUS client (`configs/P4.eos.cfg`) and authenticates logins against it, mapping users to privilege level 15. Architecture details are in [radius/README.md](radius/README.md).
+A minimal FreeRADIUS server (node `radius`, service IP `120.0.41.11`, on the CRISP private services VLAN) provides authentication for the AS. Two test users live in `radius/authorize` — `alice`/`alice123` and `bob`/`bob123` — and the shared secret for every NAS client is `testing123`. The Arista router `P4` is configured as a RADIUS client (`configs/P4.eos.cfg`) and authenticates logins against it, mapping users to privilege level 15. Architecture details are in [radius/README.md](radius/README.md).
 
 ### Test the server directly
 
@@ -319,7 +314,7 @@ docker exec clab-enterprise-ospf-bgp-radius sh -c \
 The service IP is reachable across the AS because its `/31` is advertised in OSPF:
 
 ```bash
-  docker exec clab-enterprise-ospf-bgp-SITE-CLIENT ping -c2 120.0.34.11
+  docker exec clab-enterprise-ospf-bgp-SITE-CLIENT ping -c2 120.0.41.11
 ```
 
 ### Test from the Arista P4 router

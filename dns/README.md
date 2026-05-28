@@ -6,42 +6,38 @@ Two BIND9 nameservers:
 
 | Node | Role | Service IP | Mgmt IP | Container name |
 | --- | --- | --- | --- | --- |
-| `dns-as12` | AS12 authoritative resolver (views) | `120.0.36.1/31` (P1 service LAN) | `172.20.20.30` | `clab-enterprise-ospf-bgp-dns-as12` |
-| `dns-root` | Lab root nameserver (sync point for inter-AS DNS) | `120.0.34.14/30` (off PE-isp:e1-5) | `172.20.20.40` | `clab-enterprise-ospf-bgp-dns-root` |
+| `dns-as12` | AS12 authoritative resolver (views) | `120.0.36.1/31` | `clab-enterprise-ospf-bgp-dns-as12` |
+| `dns-root` | Lab root nameserver (sync point for inter-AS DNS) | `120.0.36.5/31` | `clab-enterprise-ospf-bgp-dns-root` |
 
 `dns-as12` config is split by views in `dns/views.conf` (loaded by `dns/named.conf`).
 `dns-root` is a separate, single-purpose authoritative server for `.` configured under `dns/root/`.
 
 ### Lab root DNS — the inter-AS sync point
 
-Each AS keeps its own authoritative zone (we keep `corentinpradier.com`). To resolve a peer AS's zone without depending on that peer's resolver being up — and to avoid bring-up order coupling — every AS resolver iterates from a shared root: `dns-root` (`120.0.34.14`). The root only holds NS delegations + glue, one entry per AS.
+Each AS keeps its own authoritative zone (we keep `corentinpradier.com`). To resolve a peer AS's zone without depending on that peer's resolver being up — and to avoid bring-up order coupling — every AS resolver iterates from a shared root: `dns-root` (`120.0.36.5/31`). The root only holds NS delegations + glue, one entry per AS.
 
 ```
-clients ──► dns-as12 (recursive, views) ──► dns-root (.)
-                                              ├─ corentinpradier.com.  → 120.0.36.1  (AS12)
-                                              ├─ <as11-zone>.          → <as11-ip>   (TODO)
-                                              ├─ <as13-zone>.          → 120.0.48.34 (TODO add zone name)
-                                              └─ <as14-zone>.          → <as14-ip>   (TODO)
+clients --> dns-as12 (recursive, views) --> dns-root (.)
+                                              |- corentinpradier.com.  --> 120.0.36.1  (AS12)
+                                              |- <as11-zone>.          --> <as11-ip>   (TODO)
+                                              |- <as13-zone>.          --> 120.0.48.34 (TODO)
+                                              |- <as14-zone>.          --> <as14-ip>   (TODO)
 ```
 
-Reachability today: `dns-root` sits on the dedicated `120.0.34.12/30` link off `PE-isp` (e1-5 .13 ↔ dns-root .14), advertised as a passive OSPF interface so every internal node can reach it. To let peer ASes use it, the same prefix should be re-advertised over eBGP from `PE-isp` once inter-AS peering is wired.
+Reachability today: `dns-root` sits on the dedicated `120.0.36.4/31` link off `P2`, advertised as a passive OSPF interface so every internal node can reach it.
 
-**Why this beats a forwarder list**: with `forwarders { peerA; peerB; … }; forward first;`, a peer's `NXDOMAIN` is authoritative and aborts the lookup, and any peer being down adds latency to every uncached query. With root hints + delegation, the answer for `peer-zone.X` is fetched directly from peer X's own NS — no other AS sits in the critical path.
-
-**Adding a peer AS** (one block in `dns/root/db.root`):
+Adding a peer AS: (one block in `dns/root/db.root`):
 
 ```bind
 <peer-zone>.    IN NS    ns.<peer-zone>.
 ns.<peer-zone>. IN A     <peer-dns-ip>
 ```
 
-Then bump the SOA serial in `dns/root/db.root` and reload `dns-root`.
-
 ### AS12 resolver (`dns-as12`) layout
 
 - `dns/named.conf` — loads options + views.
 - `dns/named.conf.options` — ACLs (crisp-employees / crisp-nets / residential-nets), no global forwarders (we iterate via root hints).
-- `dns/root.hints` — root hint pointing at `dns-root` (`120.0.34.14`).
+- `dns/root.hints` — root hint pointing at `dns-root` (`120.0.36.5`).
 - `dns/views.conf` — three views (enterprise / residential / default); the two recursive views include a `zone "."` of type `hint`.
 - `dns/zones/db.corentinpradier.com{,.public}` — the AS12 authoritative zone (internal + public variant).
 
@@ -49,32 +45,157 @@ Then bump the SOA serial in `dns/root/db.root` and reload `dns-root`.
 
 ```bash
 # 1. dns-root is reachable + authoritative for `.`
-docker exec clab-enterprise-ospf-bgp-dns-as12 dig @120.0.34.14 . SOA +norec
+docker exec clab-enterprise-ospf-bgp-dns-as12 dig @120.0.36.5 . SOA +norec
 #    → answer with AA flag, SOA root-srv.lab. admin.lab. ...
 
 # 2. dns-root delegates our zone (NS + glue)
-docker exec clab-enterprise-ospf-bgp-dns-as12 dig @120.0.34.14 corentinpradier.com NS +norec
+docker exec clab-enterprise-ospf-bgp-dns-as12 dig @120.0.36.5 corentinpradier.com NS +norec
 #    → AUTHORITY: corentinpradier.com. NS ns.corentinpradier.com.
 #    → ADDITIONAL: ns.corentinpradier.com. A 120.0.36.1
 
-# 3. dns-as12 has the root hint loaded
-docker exec clab-enterprise-ospf-bgp-dns-as12 rndc dumpdb -cache && \
-  docker exec clab-enterprise-ospf-bgp-dns-as12 grep -m1 root-srv.lab /var/cache/bind/named_dump.db || true
+# 3. dns-as12 can still resolve the root and its glue
+docker exec clab-enterprise-ospf-bgp-dns-as12 dig @120.0.36.5 root-srv.lab A +norec
+docker exec clab-enterprise-ospf-bgp-dns-as12 dig @120.0.36.5 ns.n7. A +norec
 
-# 4. (Once a peer AS has been added to db.root) iterative path end-to-end:
-docker exec clab-enterprise-ospf-bgp-CRISP-CLIENT sh -lc '
-  nslookup <name-in-peer-zone> 120.0.36.1
-'
-#    → resolves via root → peer NS → answer
+# 4. End-to-end iterative path for the delegated peer AS we already publish:
+docker exec clab-enterprise-ospf-bgp-CRISP-CLIENT sh -lc 'dig @120.0.36.1 n7. NS +norec'
+#    → resolves via dns-as12 -> dns-root -> delegation + glue
 ```
 
-The iterative chain only has anything to iterate to once at least one peer AS publishes its delegation in `dns/root/db.root`; until then the AS12 zone is answered locally by the matching view and never hits the root.
+Expected:
+
+```bash
+t70n@t70n-workstation:~/Documents/crisp$ docker exec clab-enterprise-ospf-bgp-dns-as12 dig @120.0.36.5 . SOA +norec
+
+; <<>> DiG 9.21.21 <<>> @120.0.36.5 . SOA +norec
+; (1 server found)
+;; global options: +cmd
+;; Got answer:
+;; ->>HEADER<<- opcode: QUERY, status: NOERROR, id: 16726
+;; flags: qr aa; QUERY: 1, ANSWER: 1, AUTHORITY: 0, ADDITIONAL: 1
+
+;; OPT PSEUDOSECTION:
+; EDNS: version: 0, flags:; udp: 1232
+; COOKIE: d74bb028c3cc52e6010000006a18b84603f0b128e0884c4b (good)
+;; QUESTION SECTION:
+;.                              IN      SOA
+
+;; ANSWER SECTION:
+.                       86400   IN      SOA     root-srv.lab. admin.lab. 2026052800 7200 1800 604800 86400
+
+;; Query time: 2 msec
+;; SERVER: 120.0.36.5#53(120.0.36.5) (UDP)
+;; WHEN: Thu May 28 21:48:54 UTC 2026
+;; MSG SIZE  rcvd: 109
+
+t70n@t70n-workstation:~/Documents/crisp$ docker exec clab-enterprise-ospf-bgp-dns-as12 dig @120.0.36.5 corentinpradier.com NS +norec
+
+; <<>> DiG 9.21.21 <<>> @120.0.36.5 corentinpradier.com NS +norec
+; (1 server found)
+;; global options: +cmd
+;; Got answer:
+;; ->>HEADER<<- opcode: QUERY, status: NOERROR, id: 14780
+;; flags: qr; QUERY: 1, ANSWER: 0, AUTHORITY: 1, ADDITIONAL: 2
+
+;; OPT PSEUDOSECTION:
+; EDNS: version: 0, flags:; udp: 1232
+; COOKIE: decf69756df6d503010000006a18b84993669daf30f9f906 (good)
+;; QUESTION SECTION:
+;corentinpradier.com.           IN      NS
+
+;; AUTHORITY SECTION:
+corentinpradier.com.    86400   IN      NS      ns.corentinpradier.com.
+
+;; ADDITIONAL SECTION:
+ns.corentinpradier.com. 86400   IN      A       120.0.36.1
+
+;; Query time: 2 msec
+;; SERVER: 120.0.36.5#53(120.0.36.5) (UDP)
+;; WHEN: Thu May 28 21:48:57 UTC 2026
+;; MSG SIZE  rcvd: 109
+
+t70n@t70n-workstation:~/Documents/crisp$ docker exec clab-enterprise-ospf-bgp-dns-as12 dig @120.0.36.5 root-srv.lab A +norec
+docker exec clab-enterprise-ospf-bgp-dns-as12 dig @120.0.36.5 ns.n7. A +norec
+
+; <<>> DiG 9.21.21 <<>> @120.0.36.5 root-srv.lab A +norec
+; (1 server found)
+;; global options: +cmd
+;; Got answer:
+;; ->>HEADER<<- opcode: QUERY, status: NOERROR, id: 44998
+;; flags: qr aa; QUERY: 1, ANSWER: 1, AUTHORITY: 0, ADDITIONAL: 1
+
+;; OPT PSEUDOSECTION:
+; EDNS: version: 0, flags:; udp: 1232
+; COOKIE: cbd14b53d5cdb248010000006a18b84e8f2c4ac6d87a3923 (good)
+;; QUESTION SECTION:
+;root-srv.lab.                  IN      A
+
+;; ANSWER SECTION:
+root-srv.lab.           86400   IN      A       120.0.34.14
+
+;; Query time: 2 msec
+;; SERVER: 120.0.36.5#53(120.0.36.5) (UDP)
+;; WHEN: Thu May 28 21:49:02 UTC 2026
+;; MSG SIZE  rcvd: 85
+
+
+; <<>> DiG 9.21.21 <<>> @120.0.36.5 ns.n7. A +norec
+; (1 server found)
+;; global options: +cmd
+;; Got answer:
+;; ->>HEADER<<- opcode: QUERY, status: NOERROR, id: 59882
+;; flags: qr; QUERY: 1, ANSWER: 0, AUTHORITY: 1, ADDITIONAL: 2
+
+;; OPT PSEUDOSECTION:
+; EDNS: version: 0, flags:; udp: 1232
+; COOKIE: cd47afb9fda6539c010000006a18b84eb9d9fa31b687bb45 (good)
+;; QUESTION SECTION:
+;ns.n7.                         IN      A
+
+;; AUTHORITY SECTION:
+n7.                     86400   IN      NS      ns.n7.
+
+;; ADDITIONAL SECTION:
+ns.n7.                  86400   IN      A       120.0.30.1
+
+;; Query time: 2 msec
+;; SERVER: 120.0.36.5#53(120.0.36.5) (UDP)
+;; WHEN: Thu May 28 21:49:02 UTC 2026
+;; MSG SIZE  rcvd: 92
+
+t70n@t70n-workstation:~/Documents/crisp$ docker exec clab-enterprise-ospf-bgp-CRISP-CLIENT sh -lc 'dig @120.0.36.1 n7. NS +norec'
+
+; <<>> DiG 9.20.23 <<>> @120.0.36.1 n7. NS +norec
+; (1 server found)
+;; global options: +cmd
+;; Got answer:
+;; ->>HEADER<<- opcode: QUERY, status: NOERROR, id: 55988
+;; flags: qr ra; QUERY: 1, ANSWER: 0, AUTHORITY: 1, ADDITIONAL: 1
+
+;; OPT PSEUDOSECTION:
+; EDNS: version: 0, flags:; udp: 1232
+; COOKIE: a5d9ecfe6a8b9dd4010000006a18b852d12bbc396e437b50 (good)
+;; QUESTION SECTION:
+;n7.                            IN      NS
+
+;; AUTHORITY SECTION:
+.                       86400   IN      NS      root-srv.lab.
+
+;; Query time: 4 msec
+;; SERVER: 120.0.36.1#53(120.0.36.1) (UDP)
+;; WHEN: Thu May 28 21:49:06 UTC 2026
+;; MSG SIZE  rcvd: 84
+
+t70n@t70n-workstation:~/Documents/crisp$ 
+```
+
+The iterative chain only has anything to iterate to once at least one peer AS publishes its delegation in `dns/root/db.root`; `n7.` is the current example. The AS12 zone is answered locally by the matching view and never hits the root.
 
 ## Views and ACL behavior
 
 View selection depends on source IP (client subnet):
 
-- CRISP employees ACL: `10.12.30.0/24` and VPN user `192.168.1.10/32`
+- CRISP employees ACL: `10.12.30.0/24` and VPN users
 - Residential ACL: `120.0.38.0/24`
 - Default view: all other addresses
 
@@ -85,20 +206,11 @@ Our services are under the domain `corentinpradier.com`:
 
 - `extranet.corentinpradier.com` -> `120.0.40.3` (public + enterprise/CRISP)
 - `intranet.corentinpradier.com` -> `120.0.40.3` (enterprise/CRISP only) (the website content differs between extranet and intranet)
-- `voip.corentinpradier.com` -> `120.0.40.5`
-
-## Quick rebuild
-
-From repo root:
-
-```bash
-sudo containerlab destroy --topo topology.clab.yaml --cleanup
-sudo containerlab deploy --topo topology.clab.yaml
-```
+- `voip.corentinpradier.com` -> `120.0.41.5`
 
 ## Quick host checks
 
-Quick test from the DNS server management IP:
+Quick test from the DNS server management IP (this is why docker is usefull : direct access to emulated network):
 
 ```bash
 dig @172.20.20.30 extranet.corentinpradier.com
@@ -108,290 +220,113 @@ dig @172.20.20.30 intranet.corentinpradier.com
 
 Expected results:
 
+Note that the NXDOMAIN result is expected for intranet dig because the command is hitting the DNS server from a source that lands in the default view. `intranet.corentinpradier.com` is not in that view, so NXDOMAIN is expected.
+
 ```bash
-t70n@t70n-workstation:~/Documents/enterprise-network$ dig @172.20.20.30 extranet.corentinpradier.com
+t70n@t70n-workstation:~/Documents/crisp$ dig @172.20.20.30 extranet.corentinpradier.com
 
 ; <<>> DiG 9.18.39-0ubuntu0.24.04.5-Ubuntu <<>> @172.20.20.30 extranet.corentinpradier.com
 ; (1 server found)
 ;; global options: +cmd
 ;; Got answer:
-;; ->>HEADER<<- opcode: QUERY, status: NOERROR, id: 51778
+;; ->>HEADER<<- opcode: QUERY, status: NOERROR, id: 41183
 ;; flags: qr aa rd; QUERY: 1, ANSWER: 1, AUTHORITY: 0, ADDITIONAL: 1
 ;; WARNING: recursion requested but not available
 
 ;; OPT PSEUDOSECTION:
 ; EDNS: version: 0, flags:; udp: 1232
-; COOKIE: e6430cb7553421c7010000006a16ee6ecbc1f69d5d447b4e (good)
+; COOKIE: 714bba466568a079010000006a18b8f7475a45d34f736a1b (good)
 ;; QUESTION SECTION:
 ;extranet.corentinpradier.com.  IN      A
 
 ;; ANSWER SECTION:
-extranet.corentinpradier.com. 3600 IN   A       172.20.20.34
+extranet.corentinpradier.com. 3600 IN   A       120.0.40.3
 
-;; Query time: 0 msec
+;; Query time: 1 msec
 ;; SERVER: 172.20.20.30#53(172.20.20.30) (UDP)
-;; WHEN: Wed May 27 15:15:26 CEST 2026
+;; WHEN: Thu May 28 23:51:51 CEST 2026
 ;; MSG SIZE  rcvd: 101
-```
 
-```bash
-t70n@t70n-workstation:~/Documents/enterprise-network$ dig @172.20.20.30 voip.corentinpradier.com
+t70n@t70n-workstation:~/Documents/crisp$ dig @172.20.20.30 voip.corentinpradier.com
 
 ; <<>> DiG 9.18.39-0ubuntu0.24.04.5-Ubuntu <<>> @172.20.20.30 voip.corentinpradier.com
 ; (1 server found)
 ;; global options: +cmd
 ;; Got answer:
-;; ->>HEADER<<- opcode: QUERY, status: NOERROR, id: 57584
+;; ->>HEADER<<- opcode: QUERY, status: NOERROR, id: 24000
 ;; flags: qr aa rd; QUERY: 1, ANSWER: 1, AUTHORITY: 0, ADDITIONAL: 1
 ;; WARNING: recursion requested but not available
 
 ;; OPT PSEUDOSECTION:
 ; EDNS: version: 0, flags:; udp: 1232
-; COOKIE: e8cfdabdf6fc59af010000006a16ee7e09ebe418970d625a (good)
+; COOKIE: b1aeafb839349f68010000006a18b8fb58f81daea3987a1b (good)
 ;; QUESTION SECTION:
 ;voip.corentinpradier.com.      IN      A
 
 ;; ANSWER SECTION:
-voip.corentinpradier.com. 3600  IN      A       120.0.35.1
+voip.corentinpradier.com. 3600  IN      A       120.0.41.5
 
 ;; Query time: 1 msec
 ;; SERVER: 172.20.20.30#53(172.20.20.30) (UDP)
-;; WHEN: Wed May 27 15:15:42 CEST 2026
+;; WHEN: Thu May 28 23:51:55 CEST 2026
 ;; MSG SIZE  rcvd: 97
-```
 
-The NXDOMAIN result is expected because the command is hitting the DNS server from a source that lands in the default view.
-`intranet.corentinpradier.com` is not in that view, so NXDOMAIN is expected.
-
-```bash
-t70n@t70n-workstation:~/Documents/enterprise-network$ dig @172.20.20.30 intranet.corentinpradier.com
+t70n@t70n-workstation:~/Documents/crisp$ dig @172.20.20.30 intranet.corentinpradier.com
 
 ; <<>> DiG 9.18.39-0ubuntu0.24.04.5-Ubuntu <<>> @172.20.20.30 intranet.corentinpradier.com
 ; (1 server found)
 ;; global options: +cmd
 ;; Got answer:
-;; ->>HEADER<<- opcode: QUERY, status: NXDOMAIN, id: 20231
+;; ->>HEADER<<- opcode: QUERY, status: NXDOMAIN, id: 24958
 ;; flags: qr aa rd; QUERY: 1, ANSWER: 0, AUTHORITY: 1, ADDITIONAL: 1
 ;; WARNING: recursion requested but not available
 
 ;; OPT PSEUDOSECTION:
 ; EDNS: version: 0, flags:; udp: 1232
-; COOKIE: 580554c5cc2d4a2c010000006a16ee8f40f09e0aafb434cc (good)
+; COOKIE: 3bea72793ab5ee20010000006a18b8fee8ee29b033bf27b3 (good)
 ;; QUESTION SECTION:
 ;intranet.corentinpradier.com.  IN      A
 
 ;; AUTHORITY SECTION:
 corentinpradier.com.    3600    IN      SOA     ns.corentinpradier.com. admin.corentinpradier.com. 2026052202 7200 1800 604800 3600
 
-;; Query time: 0 msec
+;; Query time: 1 msec
 ;; SERVER: 172.20.20.30#53(172.20.20.30) (UDP)
-;; WHEN: Wed May 27 15:15:59 CEST 2026
+;; WHEN: Thu May 28 23:51:58 CEST 2026
 ;; MSG SIZE  rcvd: 130
+
+t70n@t70n-workstation:~/Documents/crisp$ 
 ```
 
-## View test (CRISP employees vs VPN vs residential)
-
-Run from the DNS container by creating temporary dummy source IPs inside the real ACL subnets.
-
-```bash
-docker exec clab-enterprise-ospf-bgp-dns-as12 ip link add ent0 type dummy
-docker exec clab-enterprise-ospf-bgp-dns-as12 ip addr add 10.12.30.10/24 dev ent0
-docker exec clab-enterprise-ospf-bgp-dns-as12 ip link set ent0 up
-
-docker exec clab-enterprise-ospf-bgp-dns-as12 ip link add vpn0 type dummy
-docker exec clab-enterprise-ospf-bgp-dns-as12 ip addr add 192.168.1.10/32 dev vpn0
-docker exec clab-enterprise-ospf-bgp-dns-as12 ip link set vpn0 up
-
-docker exec clab-enterprise-ospf-bgp-dns-as12 ip link add res0 type dummy
-docker exec clab-enterprise-ospf-bgp-dns-as12 ip addr add 120.0.38.10/24 dev res0
-docker exec clab-enterprise-ospf-bgp-dns-as12 ip link set res0 up
-
-docker exec clab-enterprise-ospf-bgp-dns-as12 dig -b 10.12.30.10 @120.0.36.1 intranet.corentinpradier.com
-docker exec clab-enterprise-ospf-bgp-dns-as12 dig -b 192.168.1.10 @120.0.36.1 intranet.corentinpradier.com
-docker exec clab-enterprise-ospf-bgp-dns-as12 dig -b 120.0.38.10 @120.0.36.1 intranet.corentinpradier.com
-```
-
-Expected: DNS resolution for intranet works when the source address is in the CRISP employee or VPN ranges, which match the ACLs in `named.conf.options`:
-- acl "crisp-employees" { 10.12.30.0/24; vpn-users; };
-- acl "vpn-users" { 192.168.1.10/32; 10.255.255.0/30; };
-- acl "residential-nets" { 120.0.38.0/24; };
-
-```bash
-t70n@t70n-workstation:~/Documents/enterprise-network$ docker exec clab-enterprise-ospf-bgp-dns-as12 ip link add ent0 type dummy
-docker exec clab-enterprise-ospf-bgp-dns-as12 ip addr add 10.12.30.10/24 dev ent0
-docker exec clab-enterprise-ospf-bgp-dns-as12 ip link set ent0 up
-
-docker exec clab-enterprise-ospf-bgp-dns-as12 ip link add vpn0 type dummy
-docker exec clab-enterprise-ospf-bgp-dns-as12 ip addr add 192.168.1.10/32 dev vpn0
-docker exec clab-enterprise-ospf-bgp-dns-as12 ip link set vpn0 up
-
-docker exec clab-enterprise-ospf-bgp-dns-as12 ip link add res0 type dummy
-docker exec clab-enterprise-ospf-bgp-dns-as12 ip addr add 120.0.38.10/24 dev res0
-docker exec clab-enterprise-ospf-bgp-dns-as12 ip link set res0 up
-
-docker exec clab-enterprise-ospf-bgp-dns-as12 dig -b 10.12.30.10 @120.0.36.1 intranet.corentinpradier.com
-docker exec clab-enterprise-ospf-bgp-dns-as12 dig -b 192.168.1.10 @120.0.36.1 intranet.corentinpradier.com
-docker exec clab-enterprise-ospf-bgp-dns-as12 dig -b 120.0.38.10 @120.0.36.1 intranet.corentinpradier.com
-
-; <<>> DiG 9.21.21 <<>> -b 10.12.30.10 @120.0.36.1 intranet.corentinpradier.com
-; (1 server found)
-;; global options: +cmd
-;; Got answer:
-;; ->>HEADER<<- opcode: QUERY, status: NOERROR, id: 60964
-;; flags: qr aa rd ra; QUERY: 1, ANSWER: 1, AUTHORITY: 0, ADDITIONAL: 1
-
-;; OPT PSEUDOSECTION:
-; EDNS: version: 0, flags:; udp: 1232
-; COOKIE: 3e845558709266e7010000006a16ef08faf194dc80dcfe5c (good)
-;; QUESTION SECTION:
-;intranet.corentinpradier.com.  IN      A
-
-;; ANSWER SECTION:
-intranet.corentinpradier.com. 3600 IN   A       172.20.20.34
-
-;; Query time: 1 msec
-;; SERVER: 120.0.36.1#53(120.0.36.1) (UDP)
-;; WHEN: Wed May 27 13:18:00 UTC 2026
-;; MSG SIZE  rcvd: 101
-
-
-; <<>> DiG 9.21.21 <<>> -b 192.168.1.10 @120.0.36.1 intranet.corentinpradier.com
-; (1 server found)
-;; global options: +cmd
-;; Got answer:
-;; ->>HEADER<<- opcode: QUERY, status: NOERROR, id: 21973
-;; flags: qr aa rd ra; QUERY: 1, ANSWER: 1, AUTHORITY: 0, ADDITIONAL: 1
-
-;; OPT PSEUDOSECTION:
-; EDNS: version: 0, flags:; udp: 1232
-; COOKIE: 1a66d913641c325f010000006a16ef08f37731e6fab8023a (good)
-;; QUESTION SECTION:
-;intranet.corentinpradier.com.  IN      A
-
-;; ANSWER SECTION:
-intranet.corentinpradier.com. 3600 IN   A       172.20.20.34
-
-;; Query time: 1 msec
-;; SERVER: 120.0.36.1#53(120.0.36.1) (UDP)
-;; WHEN: Wed May 27 13:18:00 UTC 2026
-;; MSG SIZE  rcvd: 101
-```
-
-Cleanup:
-
-```bash
-docker exec clab-enterprise-ospf-bgp-dns-as12 ip link del ent0
-docker exec clab-enterprise-ospf-bgp-dns-as12 ip link del res0
-```
-
-## Realistic client-side checks
+## Client side checks
 
 Use the CRISP employee client and the VPN CPE to verify the protected intranet view, then confirm a non-CRISP client still gets NXDOMAIN.
+We do not specify address of DNS as it should be given by DHCP configuration.
 
 ```bash
-docker exec clab-enterprise-ospf-bgp-CRISP-CLIENT sh -lc 'nslookup intranet.corentinpradier.com 120.0.36.1'
-docker exec clab-enterprise-ospf-bgp-ovpn-nomad sh -lc 'nslookup intranet.corentinpradier.com 120.0.36.1'
+docker exec clab-enterprise-ospf-bgp-CRISP-CLIENT sh -lc 'nslookup intranet.corentinpradier.com'
 docker exec clab-enterprise-ospf-bgp-NOMAD-CLIENT sh -lc 'nslookup intranet.corentinpradier.com 120.0.36.1 || true'
+docker exec clab-enterprise-ospf-bgp-ovpn-nomad sh -lc 'nslookup intranet.corentinpradier.com 120.0.36.1'
 ```
 
 Expected:
 
 ```bash
-t70n@t70n-workstation:~/Documents/enterprise-network$ docker exec clab-enterprise-ospf-bgp-CRISP-CLIENT sh -lc 'nslookup intranet.corentinpradier.com 120.0.36.1'
+t70n@t70n-workstation:~/Documents/crisp$ docker exec clab-enterprise-ospf-bgp-CRISP-CLIENT sh -lc 'nslookup intranet.corentinpradier.com'
+Server:         120.0.36.1
+Address:        120.0.36.1#53
+
+Name:   intranet.corentinpradier.com
+Address: 120.0.40.3
+
+t70n@t70n-workstation:~/Documents/crisp$ docker exec clab-enterprise-ospf-bgp-NOMAD-CLIENT sh -lc 'nslookup intranet.corentinpradier.com 120.0.36.1 || true'
 Server:         120.0.36.1
 Address:        120.0.36.1:53
 
-Name:   intranet.corentinpradier.com
-Address: 172.20.20.34
+** server can't find intranet.corentinpradier.com: NXDOMAIN
 
+** server can't find intranet.corentinpradier.com: NXDOMAIN
 
-t70n@t70n-workstation:~/Documents/enterprise-network$ docker exec clab-enterprise-ospf-bgp-ovpn-nomad sh -lc 'nslookup intranet.corentinpradier.com 120.0.36.1'
-Server:         120.0.36.1
-Address:        120.0.36.1:53
-
-Name:   intranet.corentinpradier.com
-Address: 172.20.20.34
-
-
-t70n@t70n-workstation:~/Documents/enterprise-network$ docker exec clab-enterprise-ospf-bgp-NOMAD-CLIENT sh -lc 'nslookup intranet.corentinpradier.com 120.0.36.1 || true'
-;; communications error to 120.0.36.1#53: timed out
-;; communications error to 120.0.36.1#53: timed out
-;; communications error to 120.0.36.1#53: timed out
+t70n@t70n-workstation:~/Documents/crisp$ docker exec clab-enterprise-ospf-bgp-ovpn-nomad sh -lc 'nslookup intranet.corentinpradier.com 120.0.36.1'
+;; connection timed out; no servers could be reached
 ```
-
-Then confirm the CRISP client can still reach the DMZ:
-
-```bash
-docker exec clab-enterprise-ospf-bgp-CRISP-CLIENT ip addr show eth1
-docker exec clab-enterprise-ospf-bgp-CRISP-CLIENT ip route
-docker exec clab-enterprise-ospf-bgp-CRISP-CLIENT ping -c 3 120.0.40.10
-docker exec clab-enterprise-ospf-bgp-CRISP-CLIENT ping -c 3 120.0.36.1
-docker exec clab-enterprise-ospf-bgp-CRISP-CLIENT nslookup voip.corentinpradier.com 120.0.36.1
-```
-
-
-
-
-# CRISP addressing and tests
-
-## Exact IP plan
-
-### PE-site to CRISP transit
-
-- `PE-site:e1-4 = 120.0.39.0/31`
-- `CRISP:e1-1 = 120.0.39.1/31`
-
-### CRISP DMZ VLAN
-
-- `CRISP:e1-2 = 120.0.40.1/24`
-- `ovpn-site = 120.0.40.2/24`
-- `reverse-proxy = 120.0.40.3/24`
-- `web-server = 120.0.40.4/24`
-
-### CRISP private services VLAN
-
-- `CRISP:e1-3 = 120.0.41.1/24`
-- `pbx = 120.0.41.5/24`
-- `dhcp-crisp = 120.0.41.10/24`
-
-### CRISP private client network
-
-- `CRISP:e1-4 = 10.12.30.1/24`
-- `CRISP-CLIENT = DHCP from 10.12.30.100-10.12.30.200`
-- `phone-crisp1 = 10.12.30.101/24`
-- `phone-crisp2 = 10.12.30.102/24`
-
-## Services
-
-- Web server service IP: `120.0.40.4`
-- VoIP PBX service IP: `120.0.41.5`
-- DHCP server service IP: `120.0.41.10`
-- DNS server used for lookups: `120.0.36.1`
-
-## Web reachability tests from CRISP
-
-Use `CRISP-CLIENT` for both IP and DNS checks:
-
-```bash
-docker exec clab-enterprise-ospf-bgp-CRISP-CLIENT sh -lc 'wget -qO- http://120.0.40.3 | grep -m1 "Page web des fans de Corentin Pradier"'
-docker exec clab-enterprise-ospf-bgp-CRISP-CLIENT sh -lc 'nslookup extranet.corentinpradier.com 120.0.36.1'
-docker exec clab-enterprise-ospf-bgp-CRISP-CLIENT sh -lc 'wget -qO- --header="Host: extranet.corentinpradier.com" http://120.0.40.3 | grep -m1 "Page web des fans de Corentin Pradier"'
-docker exec clab-enterprise-ospf-bgp-CRISP-CLIENT sh -lc 'nslookup intranet.corentinpradier.com 120.0.36.1'
-docker exec clab-enterprise-ospf-bgp-CRISP-CLIENT sh -lc 'wget -qO- --header="Host: intranet.corentinpradier.com" http://120.0.40.3 | grep -m1 "Connexion Intranet"'
-```
-
-## DHCP checks
-
-```bash
-docker exec clab-enterprise-ospf-bgp-CRISP-CLIENT ip addr show eth1
-docker exec clab-enterprise-ospf-bgp-CRISP-CLIENT ip route
-docker exec clab-enterprise-ospf-bgp-CRISP-CLIENT ping -c 3 120.0.40.10
-docker exec clab-enterprise-ospf-bgp-dhcp-crisp ps aux | grep dnsmasq
-docker exec clab-enterprise-ospf-bgp-dhcp-crisp cat /var/lib/misc/dnsmasq.leases
-```
-
-## Notes
-
-- The CRISP DMZ is the only place where the web, VPN, VoIP, and DHCP services live.
-- The private client net is behind `CRISP` and receives its leases through DHCP relay.
-- The CRISP client bridge name is shortened to `net-crisp-cli` because Linux interface names must stay 15 characters or fewer.
