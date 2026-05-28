@@ -8,6 +8,8 @@ BRIDGES=(
   net-nomad
   net-site
   net-crisp
+  net-crisp-dmz
+  net-crisp-srv
   net-crisp-cli
   br-vlan104
   br-vlan121

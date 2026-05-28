@@ -1,7 +1,7 @@
 #!/bin/sh
 set -eu
 
-for bridge in net-isp dns-net dhcp-net net-nomad net-site net-crisp net-crisp-cli net-home; do
+for bridge in net-isp dns-net dhcp-net net-nomad net-site net-crisp net-crisp-dmz net-crisp-srv net-crisp-cli net-home; do
   sudo ip link add name "$bridge" type bridge 2>/dev/null || true
   sudo ip link set "$bridge" up
 done

@@ -15,9 +15,8 @@ server {
     listen 80;
     server_name intranet.corentinpradier.com;
 
-    allow ${NOMAD_NETWORK};
+    allow ${VPN_CLIENT_NETWORK};
     allow ${CRISP_CLIENT_NETWORK};
-    allow ${SITE_NETWORK};
     allow 10.255.255.0/30;
     deny all;
     
