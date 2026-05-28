@@ -1,12 +1,31 @@
 # VoIP
 
-Simple SIP call flow with one Asterisk PBX and 2 softphones.
+SIP call flow with one Asterisk PBX (server) and 2 softphones (clients).
+
+## Architecture
+
+### Files
 
 ```
-phone-crisp1 (ext. 1001) ── CRISP client net ──┐
-                                                ├── CRISP ── pbx (Asterisk :5060)
-phone-crisp2 (ext. 1002) ── CRISP client net ──┘
+voip/
+  Makefile                    Build both Docker images; attach to phone consoles.
+  asterisk/
+    Dockerfile                Builds the Asterisk PBX image (asterisk + config).
+    sip.conf                  SIP peer definitions — ext. 1001 (phone-crisp1) and 1002
+                              (phone-crisp2), dynamic host, ulaw/alaw codecs.
+    extensions.conf           Dial plan — Dial(SIP/100x, 30s) for each extension.
+  client/
+    Dockerfile                Builds the baresip softphone image.
+    entrypoint.sh             Auto-configures baresip at startup: reads SIP_USER /
+                              SIP_SERVER / SIP_PASS env vars, detects local IP on
+                              eth1, writes accounts + config, then registers to PBX.
 ```
+
+### Network topology
+
+![architecture PBX softphones](resources/archi.png)
+
+The PBX runs in the CRISP DMZ (`120.0.40.5/24`). Both phones sit in the CRISP LAN (`10.12.30.0/24`) and reach the PBX through the CRISP router.
 
 ## How it works
 
@@ -20,17 +39,9 @@ Topology service links:
 - `phone-crisp1` on `10.12.30.101/24` via `CRISP`
 - `phone-crisp2` on `10.12.30.102/24` via `CRISP`
 
-Credentials:
-
-| Node | SIP ext | Password |
-|---|---|---|
-| pbx | - | - |
-| phone-crisp1 | 1001 | secret1 |
-| phone-crisp2 | 1002 | secret2 |
-
 ## Registration
 
-Phones register automatically on startup (`regint=60`, re-registers every 60 s).
+Phones register automatically on startup (`regint=3600`, re-registers every 3600 s).
 
 Check registration status from a phone console:
 
@@ -38,30 +49,15 @@ Check registration status from a phone console:
 /reginfo
 ```
 
-Force re-registration:
-
-```text
-/register
-```
-
-Unregister:
-
-```text
-/unregister
-```
-
 ## Build and deploy
 
 ```bash
 cd voip
 make build
-cd ..
-
-sudo containerlab destroy --topo topology.clab.yaml --cleanup
-sudo containerlab deploy --topo topology.clab.yaml
 ```
+Then deploy, the topology normally (terminal or VScode extension)
 
-## Smoke test
+## Test
 
 Open both phone consoles in separate terminals:
 
@@ -96,19 +92,3 @@ End the call from either side:
 ```
 
 Detach from a phone console without stopping it: `Ctrl+C`.
-
-## Quick debug
-
-```bash
-docker logs clab-enterprise-ospf-bgp-pbx | tail -n 100
-docker exec clab-enterprise-ospf-bgp-phone-crisp1 ip addr show eth1
-docker exec clab-enterprise-ospf-bgp-phone-crisp2 ip addr show eth1
-```
-
-Verify DNS resolution from a phone:
-
-```bash
-docker exec clab-enterprise-ospf-bgp-phone-crisp1 getent hosts voip.corentinpradier.com
-```
-
-Note: audio quality is not the goal in this lab; the smoke test validates SIP registration and call signaling.

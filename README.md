@@ -93,7 +93,7 @@ The physical breakout trunk uses Linux VLAN subinterfaces on one host NIC:
 | --- | --- | --- | --- |
 | `104` | `clab104` | `br-vlan104` | `P4:Ethernet4` |
 | `121` | `clab121` | `br-vlan121` | `PE-isp:e1-3` |
-| `122` | `clab122` | `br-vlan122` | `PE-isp:e1-4` |
+| `122` | `clab122` | `br-vlan122` | `PE-site:e1-5` |
 
 Run:
 
@@ -184,7 +184,7 @@ flowchart TB
   end
   P4 --- BR104
   PEisp --- BR121
-  PEisp --- BR122
+  PEsite --- BR122
 ```
 
 ### Services
