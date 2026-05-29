@@ -319,7 +319,8 @@ topology:
         set / network-instance default static-routes route 10.255.255.0/30 next-hop-group ovpn-next
         set / network-instance default static-routes route 192.168.1.10/32 next-hop-group ovpn-next
         set / network-instance default static-routes route 10.255.255.4/30 next-hop-group ovpn-next
-        set / network-instance default static-routes route 192.168.50.0/24 next-hop-group ovpn-next
+        set / network-instance default static-routes route 10.255.255.0/30 next-hop-group ovpn-next
+        set / network-instance default static-routes route 192.168.1.0/24 next-hop-group ovpn-next
         set / network-instance default next-hop-groups group ovpn-next nexthop 1 ip-address 120.0.40.2
         set / network-instance default protocols ospf instance main admin-state enable
         set / network-instance default protocols ospf instance main version ospf-v2
@@ -365,7 +366,8 @@ topology:
         set / network-instance default interface system0.0
         set / network-instance default static-routes route 10.255.255.0/30 next-hop-group ovpn-next
         set / network-instance default static-routes route 10.255.255.4/30 next-hop-group ovpn-next
-        set / network-instance default static-routes route 192.168.50.0/24 next-hop-group ovpn-next
+        set / network-instance default static-routes route 10.255.255.0/30 next-hop-group ovpn-next
+        set / network-instance default static-routes route 192.168.1.0/24 next-hop-group ovpn-next
         set / network-instance default next-hop-groups group ovpn-next nexthop 1 ip-address 120.0.40.2
         set / network-instance default protocols ospf instance main admin-state enable
         set / network-instance default protocols ospf instance main version ospf-v2
@@ -545,7 +547,7 @@ topology:
       binds:
         - ./scripts/udhcpc-resolvconf.sh:/opt/udhcpc-resolvconf.sh:ro
       exec:
-        - apk add --no-cache iproute2 iptables udhcpc
+        - apk add --no-cache iproute2 iptables
         - sh -lc 'for i in $(seq 1 120); do ip link set eth1 up 2>/dev/null || true; ip link show dev eth1 2>/dev/null | grep -q LOWER_UP && udhcpc -O dns -O router -i eth1 -q -s /opt/udhcpc-resolvconf.sh && break; sleep 0.5; done'
         - sh -lc 'grep -q "^nameserver " /etc/resolv.conf 2>/dev/null || printf "nameserver 120.0.36.1\n" > /etc/resolv.conf'
         - ip route replace default via 120.0.38.1 dev eth1
@@ -608,7 +610,7 @@ topology:
       env:
         NOMAD_NETWORK: "120.0.38.0/24"
         SITE_NETWORK: "120.0.37.0/24"
-        VPN_CLIENT_NETWORK: "192.168.1.10/32"
+        VPN_CLIENT_NETWORK: "192.168.1.0/24"
         CRISP_CLIENT_NETWORK: "10.12.30.0/24"
       exec:
         - sh -lc 'printf "nameserver 120.0.36.1\n" > /etc/resolv.conf'
