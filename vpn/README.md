@@ -14,9 +14,14 @@ The enterprise IGP does not carry the nomad's home network.
 |---------------|------|
 | `openvpn/nomad.conf` | CPE config — client/initiator. `nobind`, `remote 120.0.40.2 1194`. |
 | `openvpn/site.conf`  | HQ config — server/listener bound to `120.0.40.2:1194`, `float` (NAT survival). |
-| `openvpn/static.key` | Shared pre-shared key. Static-key mode = single peer. |
+| `openvpn/static.key` | Shared pre-shared key for the nomad tunnel. Static-key mode = single peer. |
+| `openvpn/site-branch.conf` | HQ config — **second** listener on `120.0.40.2:1195` (tun1) for the remote branch. |
+| `openvpn/remote-site.conf` | Remote branch gateway config — runs on the **physical Ubuntu router**, dials `120.0.40.2:1195`. |
+| `openvpn/static-branch.key` | Shared pre-shared key for the branch tunnel (distinct from `static.key`). |
 
-Mode is `secret` (static key, no PKI). Fine for one CPE; if you ever ship a second box, migrate to TLS with per-CPE certs.
+Mode is `secret` (static key, no PKI). Static-key is one peer per listener, so the
+nomad CPE and the remote branch each get their **own** listener / key / inner `/30`
+(`:1194` and `:1195`). If you ever add a third peer, migrate to TLS with per-peer certs.
 
 `cipher none` / `auth none` is set for lab readability — packets are clear-text on the wire so you can read them in Wireshark. 
 
@@ -32,7 +37,9 @@ Mode is `secret` (static key, no PKI). Fine for one CPE; if you ever ship a seco
 | `120.0.40.0/24`     | CRISP DMZ on `net-crisp-dmz` (ovpn-site/proxy/web) | Yes (passive on CRISP) |
 | `120.0.41.0/24`     | CRISP private services on `net-crisp-srv`     | Yes (passive on CRISP) |
 | `10.12.30.0/24`     | CRISP private client net                           | Yes (passive on CRISP) |
-| `10.255.255.0/30`   | Tunnel inner — `.1` nomad CPE, `.2` CRISP side     | Static on PE-site **and** CRISP → `ovpn-site` (120.0.40.2) |
+| `10.255.255.0/30`   | Nomad tunnel inner — `.1` CPE, `.2` CRISP side     | Static on PE-site **and** CRISP → `ovpn-site` (120.0.40.2) |
+| `10.255.255.4/30`   | Branch tunnel inner — `.5` router, `.6` CRISP side | Static on PE-site **and** CRISP → `ovpn-site` (120.0.40.2) |
+| `192.168.50.0/24`   | Remote-site LAN behind the physical Ubuntu router  | Static on PE-site **and** CRISP → `ovpn-site`; tunnel-only (not in BGP) |
 
 ## Why it matches the "pre-configured CPE" philosophy
 
@@ -121,6 +128,63 @@ docker exec clab-enterprise-ospf-bgp-ovpn-site tcpdump -ni eth1 'udp port 1194'
 You'll see `120.0.38.<dhcp>:<random>  ↔  120.0.40.2:1194` — the CPE's source
 is the CE's WAN IP on `net-nomad` (post-MASQUERADE), exactly as a real CPE
 behind NAT, and the destination is the DMZ listener.
+
+## Remote branch site-to-site (physical Ubuntu router)
+
+A second static-key tunnel connects a **real, physical** branch router to CRISP.
+The router sits at the edge of a neighbouring AS and reaches us over the **eBGP
+interconnect** (P4 advertises `120.0.32.0/20`). It terminates on a **second
+listener** on `ovpn-site` (`:1195`, `tun1`, inner `10.255.255.4/30`) so it
+coexists with the nomad tunnel — static-key mode is one peer per listener.
+
+### What rides the tunnel (and what doesn't)
+
+Unlike the NAT'd nomad CPE, the branch router can already reach **every
+BGP-advertised** enterprise prefix (`120.0.32.0/20`: DMZ, web, DNS, services)
+natively over the interconnect. So the tunnel deliberately carries **only the
+prefixes BGP does not advertise**:
+
+- branch → enterprise: `10.12.30.0/24` (CRISP private client net, RFC1918) — see `remote-site.conf`.
+- enterprise → branch: `192.168.50.0/24` (remote-site LAN) — pushed by `site-branch.conf`, steered by the CRISP/PE-site statics.
+
+Because we never tunnel a `120.0.x` prefix, the VPN endpoint `120.0.40.2` stays
+on the underlay on its own — no `net_gateway` host-route hack (contrast
+`nomad.conf`, which tunnels `120.0.40.0/24` and must pin the endpoint).
+
+### Repo wiring for the branch
+
+- `ovpn-site` runs a 2nd `openvpn` daemon (`site-branch.conf`) sharing the
+  `120.0.40.2` DMZ IP; `route 192.168.50.0/24` makes it forward into `tun1`.
+- **CRISP** and **PE-site** each get two extra statics → `ovpn-next` (120.0.40.2):
+  `10.255.255.4/30` (branch inner) and `192.168.50.0/24` (remote LAN).
+- Reach is currently limited to CRISP/PE-site/DMZ (the statics aren't
+  redistributed). The showcase flow `10.12.30.0/24 ⇄ 192.168.50.0/24` works
+  because CRISP owns `10.12.30.0/24` directly. To let the rest of AS12 (e.g.
+  DNS, the enterprise client) initiate to the branch LAN, add an OSPF
+  export-policy on CRISP that redistributes these statics.
+
+### Tests (run once the physical router is up — see the router setup steps)
+
+```bash
+# 1. Both listeners up on ovpn-site
+docker exec clab-enterprise-ospf-bgp-ovpn-site ip -br a show tun0   # 10.255.255.2 peer .1  (nomad)
+docker exec clab-enterprise-ospf-bgp-ovpn-site ip -br a show tun1   # 10.255.255.6 peer .5  (branch)
+
+# 2. Inner ping across the branch tunnel (from the physical router)
+#    ip -br a show tun0    -> 10.255.255.5 peer 10.255.255.6
+#    ping -c3 10.255.255.6
+
+# 3. The payoff: branch LAN <-> CRISP private client net (tunnel-only, NOT via BGP)
+#    from a host on 192.168.50.0/24:   ping -c3 10.12.30.1
+docker exec clab-enterprise-ospf-bgp-CRISP-CLIENT ping -c3 192.168.50.10   # the branch service host
+
+# 4. Confirm public stays OFF the tunnel: from the router, the path to a DMZ
+#    host must go via the interconnect, not tun0.
+#    traceroute 120.0.40.3      # first hop = the router's eBGP next-hop, not 10.255.255.6
+
+# 5. Watch the branch encap land on the listener
+docker exec clab-enterprise-ospf-bgp-ovpn-site tcpdump -ni eth1 'udp port 1195'
+```
 
 ## Tear down
 
