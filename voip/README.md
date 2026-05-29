@@ -31,6 +31,7 @@ PBX    ──200 OK────▶ Client
 ### Call flow: Client → Softphone → PBX → Client
 
 A complete call between ext. 1001 and ext. 1002 goes through two layers — **SIP signalling** and **RTP media** — and Asterisk sits in the middle of both:
+
 ![sip call flow example](resources/sip_call_flow.jpg)
 
 **SIP (signalling)** — port 5060/UDP: controls call lifecycle. `INVITE` carries an SDP offer listing the caller's IP, RTP port, and supported codecs. The `200 OK` answer carries the callee's SDP. After `ACK` the media path is negotiated.
