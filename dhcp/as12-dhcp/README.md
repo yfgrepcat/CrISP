@@ -15,7 +15,7 @@ The direct client segment on PE-nomad is `120.0.38.0/24`, addressed by our AS DH
 - Client address pool: `120.0.38.100-120.0.38.200/24`
 - DNS handed to clients (AS12 dns, not root): `120.0.36.1`
 
-Quick configuration check (leave the lab running for a few minutes to give clients time to get IPs):
+Quick configuration check (leave the lab running for few minutes to leave some time to clients to get IPs): 
 
 ```bash
 docker exec clab-enterprise-ospf-bgp-dhcp cat /var/lib/misc/dnsmasq.leases
@@ -35,7 +35,7 @@ That hook does two things when a lease is received:
 
 This is what makes `nslookup intranet.corentinpradier.com` work without passing `120.0.36.1` explicitly.
 
-This is the only solution we found that works, avoiding hard-coding the configuration in Docker.
+This is only solution we achieved to make work, avoiding us to hard-code the configuration in the docker.
 
 ## Verify DHCP option DNS
 

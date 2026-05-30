@@ -1,25 +1,25 @@
 # RADIUS (FreeRADIUS)
 
-While TACACS+ is traditionally used for device administration, this lab uses FreeRADIUS to secure administrative access to the Arista vEOS routers (like P4).
+While TACACS+ is traditionally used for device administration, this lab uses FreeRADIUS to secure administrative access to the Arista vE0S routers (like P4). 
 
 ### Authentication & Authorization
 
-When a user logs in, the router sends a RADIUS 'Access-Request'. The FreeRADIUS server validates the credentials and responds with an 'Access-Accept'.
+When a user logs in, the router sends a RADIUS 'Acces-Request'. The FreeRADIUS server validates the credentials and responds with an 'Acces-Accept'. 
 
 ### Privilege Elevation 
 
 Inside the "Accept-Request" message, FreeRADIUS injects an Arista-specific VSA. 
 The router reads this attribute and directly places the user into privilege level 15, granting full admin rights.
 
-### Fallback
+### FallBack
 
 Local fallback is configured (`aaa authentication login default group radius local`), but it only triggers if the RADIUS server is completely unreachable.
 
 ### Context
 
-The FreeRADIUS server for our CRISP enterprise authenticates users via the `files` module (PAP / Cleartext-Password).
-It runs in the official `freeradius/freeradius-server` container.
-The RADIUS server is in the CRISP private services VLAN, with IP `120.0.41.11/24`.
+FreeRADIUS server for our CRISP enterprise. Authenticates users via the `files` module (PAP / Cleartext-Password).
+Runs in the official `freeradius/freeradius-server` container.
+Radius server is in the CRISP private services VLAN, with IP `120.0.41.11/24`.
 
 ## Files
 

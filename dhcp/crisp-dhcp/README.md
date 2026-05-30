@@ -93,5 +93,5 @@ t70n@t70n-workstation:~/Documents/crisp$ docker exec clab-enterprise-ospf-bgp-dh
 1780211238 aa:c1:ab:63:89:53 10.12.30.136 * 01:aa:c1:ab:63:89:53
 ```
 
-We can see that `CRISP-CLIENT` gets an IP address and can access DNS. Its default route is via `10.12.30.1`.
-Note: `phone-crisp1` and `phone-crisp2` have static IP addresses.
+We can see that CRISP-CLIENT do get an adress IP and can access DNS. Also, it's default route is via 10.12.30.1, just like we wanted to. It works ! 
+Please note that phone-crisp1 and phone-crisp2 have static address IP.

@@ -31,7 +31,7 @@ Our services are under the domain `corentinpradier.com`:
 
 ## Quick host checks
 
-Quick test from the DNS server management IP (this is why Docker is useful: direct access to the emulated network):
+Quick test from the DNS server management IP (this is why docker is usefull : direct access to emulated network):
 
 ```bash
 dig @172.20.20.30 extranet.corentinpradier.com
@@ -120,7 +120,7 @@ corentinpradier.com.    3600    IN      SOA     ns.corentinpradier.com. admin.co
 ## Client side checks
 
 Use the CRISP employee client to verify the protected intranet view, then confirm a non-CRISP client still gets NXDOMAIN.
-We do not specify the DNS address because it should be provided by DHCP.
+We do not specify address of DNS as it should be given by DHCP configuration.
 Note that both clients can get the extranet website.
 
 ```bash

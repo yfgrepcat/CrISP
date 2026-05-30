@@ -18,7 +18,7 @@ The enterprise IGP does not carry the nomad's home network.
 | `openvpn/nomad.conf` | CPE config - client/initiator. `nobind`, `remote 120.0.40.2 1194`. |
 | `openvpn/site.conf`  | HQ config - server/listener bound to `120.0.40.2:1194`, `float` (NAT survival). |
 | `openvpn/static.key` | Shared pre-shared key for the nomad tunnel. Static-key mode = single peer. |
-| `openvpn/site-branch.conf` | HQ config - second listener on `120.0.40.2:1195` (tun1) for the remote branch. |
+| `openvpn/site-branch.conf` | HQ config - recond listener on `120.0.40.2:1195` (tun1) for the remote branch. |
 | `openvpn/remote-site.conf` | Remote branch gateway config - runs on the physical Ubuntu router, dials `120.0.40.2:1195`. |
 | `openvpn/static-branch.key` | Shared pre-shared key for the branch tunnel (distinct from `static.key`). |
 
