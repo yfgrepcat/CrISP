@@ -1,6 +1,7 @@
 ## Arista vEOS image
 
-`P4` runs as Arista vEOS and needs the `vrnetlab/arista_veos:4.31.0F` image present locally. The topology pins `image-pull-policy: Never`, so containerlab never tries to pull it — you must load or build it first.
+`P4` runs as Arista vEOS and needs the `vrnetlab/arista_veos:4.31.0F` image present locally. 
+The topology pins `image-pull-policy: Never`, so containerlab never tries to pull it - you must load or build it first.
 
 Load the prebuilt image from the archive shipped with the repo:
 
@@ -13,7 +14,7 @@ Alternatively build it yourself from an EOS image with `./scripts/build-veos-ima
 
 ## Arista P4 breakout trunk
 
-`P4` runs as Arista vEOS using `configs/P4.eos.cfg`. The default local image tag is `vrnetlab/arista_veos:4.31.0F`; override it during deployment with `VEOS_IMAGE` if needed.
+`P4` runs as Arista vEOS using `interco/P4.eos.cfg`. The default local image tag is `vrnetlab/arista_veos:4.31.0F`; override it during deployment with `VEOS_IMAGE` if needed.
 
 The physical breakout trunk uses Linux VLAN subinterfaces on one host NIC:
 
@@ -31,7 +32,7 @@ TRUNK_IFACE=<your-host-nic> sudo -E ./scripts/connect-breakout-trunk.sh
 
 ### Configuration Options & Environment Variables
 
-The setup scripts ([create-host-bridges.sh](file:///home/tructruc00/cours/S8/projet-reseau/enterprise-network/scripts/create-host-bridges.sh) and [connect-breakout-trunk.sh](file:///home/tructruc00/cours/S8/projet-reseau/enterprise-network/scripts/connect-breakout-trunk.sh)) support several environment variables to customize physical network attachment:
+The setup scripts ([create-host-bridges.sh](./scripts/create-host-bridges.sh) and [connect-breakout-trunk.sh](./scripts/connect-breakout-trunk.sh)) support several environment variables to customize physical network attachment:
 
 | Environment Variable | Description | Default / Example |
 | --- | --- | --- |
@@ -49,7 +50,7 @@ The setup scripts ([create-host-bridges.sh](file:///home/tructruc00/cours/S8/pro
 docker exec -it clab-enterprise-ospf-bgp-P4 telnet localhost 5000
 ```
 
-Log in as the RADIUS user `alice` / `alice123` — you land directly at privilege level 15 (`P4#`):
+Log in as the RADIUS user `alice` / `alice123` - you land directly at privilege level 15 (`P4#`):
 
 ```text
 P4#show privilege                            ! -> Current privilege level is 15
@@ -57,4 +58,4 @@ P4#test aaa group radius alice alice123      ! -> "User was successfully authent
 P4#test aaa group radius bob  wrongpw        ! -> "Authentication failed"
 ```
 
-> Note: with `aaa authentication login default group radius local`, EOS only falls back to the local `admin` account when RADIUS is **unreachable** — a RADIUS *reject* is final. Use `alice`/`bob` (privilege 15) as the day-to-day admins; local `admin` is the break-glass login for when the RADIUS server is down. The `aaa authorization serial-console` line in `configs/P4.eos.cfg` is what makes the RADIUS-returned privilege level apply to console logins (EOS disables console authorization by default).
+> Note: with `aaa authentication login default group radius local`, EOS only falls back to the local `admin` account when RADIUS is **unreachable** - a RADIUS *reject* is final. Use `alice`/`bob` (privilege 15) as the day-to-day admins; local `admin` is the break-glass login for when the RADIUS server is down. The `aaa authorization serial-console` line in `interco/P4.eos.cfg` is what makes the RADIUS-returned privilege level apply to console logins (EOS disables console authorization by default).
