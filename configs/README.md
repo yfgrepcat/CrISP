@@ -20,7 +20,7 @@ The physical breakout trunk uses Linux VLAN subinterfaces on one host NIC:
 | VLAN | Linux interface | Host bridge | Containerlab endpoint |
 | --- | --- | --- | --- |
 | `104` | `clab104` | `breakout-trunk` | `P4:Ethernet4` |
-| `121` | `clab121` | `br-vlan121` | `PE-nomad:e1-4` |
+| `121` | `clab121` | `br-vlan121` | `PE-nomad:e1-3` |
 | `122` | `clab122` | `br-vlan122` | `PE-site:e1-5` |
 
 Run:

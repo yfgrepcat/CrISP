@@ -7,4 +7,4 @@
 ; the public ICANN root.
 
 .                       86400  IN  NS    root-srv.lab.
-root-srv.lab.           86400  IN  A     120.0.34.14
+root-srv.lab.           86400  IN  A     120.0.36.5
