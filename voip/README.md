@@ -2,6 +2,44 @@
 
 SIP call flow with one Asterisk PBX (server) and 2 softphones (clients).
 
+## Concepts
+
+### PBX — Private Branch Exchange
+
+A PBX is a private telephone switch that manages internal extensions and routes calls between them (and optionally to external networks). It acts as a call controller: it knows which extension maps to which endpoint, enforces the dial plan, and handles call state (setup, ringing, connected, teardown).
+
+**Asterisk** is an open-source software PBX. It runs as a daemon, speaks SIP (and other protocols), and is configured through two key files:
+
+| File | Role |
+|---|---|
+| `sip.conf` | Declares SIP peers/users — credentials, codec list, host binding |
+| `extensions.conf` | Dial plan — maps dialled numbers to actions (`Dial()`, `Voicemail()`, etc.) |
+
+Asterisk needs no physical hardware — it is purely software, which makes it well-suited for containerised deployments.
+
+### SIP — Session Initiation Protocol
+
+SIP is the **signalling** protocol: it sets up, modifies, and tears down calls, but carries no audio itself. It is text-based (like HTTP), runs over UDP/5060 by default, and follows a request/response model.
+
+A SIP endpoint (softphone, IP phone) must first **register** with the PBX so the server knows where to route inbound calls:
+
+```
+Client ──REGISTER──▶ PBX   (announces "I am ext. 1001 at this IP:port")
+PBX    ──200 OK────▶ Client
+```
+
+### Call flow: Client → Softphone → PBX → Client
+
+A complete call between ext. 1001 and ext. 1002 goes through two layers — **SIP signalling** and **RTP media** — and Asterisk sits in the middle of both:
+
+![sip call flow example](resources/sip_call_flow.jpg)
+
+**SIP (signalling)** — port 5060/UDP: controls call lifecycle. `INVITE` carries an SDP offer listing the caller's IP, RTP port, and supported codecs. The `200 OK` answer carries the callee's SDP. After `ACK` the media path is negotiated.
+
+**RTP (media)** — ephemeral UDP ports: carries the actual audio samples, encoded with the negotiated codec, (in our case, we chose `PCMU` = G.711 µ-law). Asterisk bridges the two RTP streams.
+
+A **softphone** (here `baresip`) is the client-side software that implements both roles: it speaks SIP to register and drive call state, and opens an RTP socket to send/receive encoded audio.
+
 ## Architecture
 
 ### Files
