@@ -20,4 +20,4 @@ if [[ -z "${TRUNK_IFACE:-}" ]]; then
   exit 1
 fi
 
-exec "$SCRIPT_DIR/create-host-bridges.sh"
+exec "$SCRIPT_DIR/create-host-bridges.sh" 
