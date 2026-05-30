@@ -1,5 +1,7 @@
 FROM nginx:alpine
 
+RUN apk add --no-cache tcpdump
+
 COPY ./intranet /usr/share/nginx/html/intranet
 COPY ./public /usr/share/nginx/html/public
 
