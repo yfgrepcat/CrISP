@@ -16,6 +16,8 @@ Feel free to explore the repo and see detailed configuration in the README files
 
 ![Logo](rsc/topo.jpg)
 
+Main configuration file for this containerlab is [topology.clab.yaml](topology.clab.yaml)
+
 ## First launch
 
 ```bash
