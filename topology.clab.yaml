@@ -1,68 +1,3 @@
-# =============================================================================
-# Enterprise OSPF + CRISP lab
-# Intra-AS addressing carved from 120.0.32.0/20  (= 120.0.32.0 - 120.0.47.255)
-#
-# Loopbacks     -> 120.0.32.0/24
-#   P1..P4         120.0.32.{1..4}/32
-#   PE-nomad       120.0.32.22/32
-#   PE-site        120.0.32.23/32
-#
-# Core P2P /31s -> 120.0.33.0/24
-#   P1-P2          120.0.33.0/31    (P1 .0,  P2 .1)
-#   P1-P3          120.0.33.2/31    (P1 .2,  P3 .3)
-#   P1-P4          120.0.33.4/31    (P1 .4,  P4 .5)
-#   P2-P3          120.0.33.6/31    (P2 .6,  P3 .7)
-#   P2-P4          120.0.33.8/31    (P2 .8,  P4 .9)
-#   P3-P4          120.0.33.10/31   (P3 .10, P4 .11)
-#
-# PE uplinks /31s -> 120.0.34.0/24
-#   P2-PE-nomad    120.0.34.2/31    (P2 .2, PE-nomad .3)
-#   P3-PE-site     120.0.34.4/31    (P3 .4, PE-site .5)
-#   P2-RADIUS      120.0.34.10/31   (P2 .10, RADIUS .11)
-#
-# Lab root DNS /31 -> 120.0.36.4/31  (P2 .4, dns-root .5)
-#   Dedicated transit segment on P2 for the lab root zone.
-#
-# VoIP /31s -> 120.0.35.0/24
-#   P4-pbx         120.0.35.0/31    (P4 .0, pbx .1)         -- PBX branché sur P4
-#   The softphones now live on the CRISP client net at 10.12.30.101/24 and 10.12.30.102/24.
-#
-# Service /31s -> 120.0.36.0/24
-#   P1-DNS         120.0.36.0/31    (P1 .0, DNS .1)
-#   P1-DHCP        120.0.36.2/31    (P1 .2, DHCP .3)
-#
-# CRISP router and downstream nets
-#   PE-site-CRISP   120.0.39.0/31    (PE-site .0, CRISP .1)
-#   CRISP DMZ VLAN  120.0.40.0/24    (CRISP .1, ovpn + web)
-#   CRISP SVC VLAN  120.0.41.0/24    (CRISP .1, PBX + DHCP)
-#   CRISP clients   10.12.30.0/24    (CRISP .1, client PC + softphones)
-#
-#   ovpn-site is single-homed in the CRISP DMZ (120.0.40.2/24). The OpenVPN
-#   listener binds the DMZ IP; the nomad reaches it via internal OSPF
-#   (home-ce sits on the residential access bridge net-nomad 120.0.38.0/24 → PE-nomad → core → PE-site →
-#   CRISP → DMZ).
-#
-# Nomad home network (behind the CE — opaque to everything else)
-#   net-home 192.168.1.0/24
-#     home-ce eth2    192.168.1.1/24     (CE LAN, NAT gateway)
-#     ovpn-nomad eth1 192.168.1.10/24    (CPE plugged into the CE)
-#
-# VPN tunnels (point-to-point, static-key) — both terminate on ovpn-site 120.0.40.2
-#   10.255.255.0/30   nomad CPE    (CPE .1,    HQ .2)   UDP/1194  tun0
-#   10.255.255.4/30   remote branch (router .5, HQ .6)  UDP/1195  tun1
-#   192.168.50.0/24   remote-site LAN behind the physical Ubuntu router (tunnel-only)
-#
-# Host bridges (create on host before deploy):
-#   sudo ip link add name net-site type bridge && sudo ip link set net-site up
-#   sudo ip link add name net-home type bridge && sudo ip link set net-home up
-#
-# External breakout trunk:
-#   TRUNK_IFACE=<host-nic> sudo -E ./scripts/create-host-bridges.sh
-#   - host NIC trunk subinterface VLAN 104 -> breakout-trunk -> P4:Ethernet4
-#   - host NIC trunk subinterface VLAN 121 -> br-vlan121 -> PE-nomad:e1-3
-#   - host NIC trunk subinterface VLAN 122 -> br-vlan122 -> PE-site:e1-5
-# =============================================================================
-
 name: enterprise-ospf-bgp
 
 mgmt:
@@ -242,7 +177,43 @@ topology:
       group: core
       env:
         QEMU_MEMORY: "6144"
-      startup-config: configs/P4.eos.cfg
+      startup-config: interco/P4.eos.cfg
+      # Example ACL and interface application for P4 (commented)
+      # ip access-list ACL-INBOUND-INTERCO
+      #    10 remark --- Autoriser le trafic BGP ---
+      #    20 permit tcp any any eq bgp
+      #    30 permit tcp any eq bgp any
+      #    40 remark --- Trafic Web vers le Reverse Proxy ---
+      #    50 permit tcp any host 120.0.40.3 eq 80
+      #    53 permit udp any host 120.0.36.1 eq 53
+      #    54 permit tcp any host 120.0.36.1 eq 53
+      #    55 permit udp any host 120.0.36.1 eq 54
+      #    56 permit tcp any host 120.0.36.1 eq 54
+      #    60 permit tcp any host 120.0.40.3 eq 443
+      #    70 remark --- Trafic VPN vers OpenVPN ---
+      #    80 permit udp any host 120.0.40.2 eq 1194
+      #    85 permit udp any host 120.0.40.5 eq 5060
+      #    86 permit tcp any host 120.0.40.5 eq 5060
+      #    90 remark --- Autoriser le Ping vers la DMZ ---
+      #    100 permit icmp any 120.0.40.0/24 echo-request
+      #    110 remark --- Deny All implicite explicité ---
+      #    120 deny ip any any log
+      #
+      # interface Ethernet4.1012
+      #    description Interco BGP VLAN 1012
+      #    encapsulation dot1q vlan 1012
+      #    ip address 10.0.2.12/24
+      #    ! Application de l'ACL en entrée (Ajout)
+      #    ip access-group ACL-INBOUND-INTERCO in
+      #    no shutdown
+      # !
+      # interface Ethernet4.1213
+      #    description Interco BGP VLAN 1213
+      #    encapsulation dot1q vlan 1213
+      #    ip address 10.0.4.12/24
+      #
+      #    ip access-group ACL-INBOUND-INTERCO in
+      #    no shutdown
 
   # ===[EDGE-ROUTERS]==============================================================
 
@@ -384,7 +355,7 @@ topology:
       mgmt-ipv4: 172.20.20.30
       group: services
       binds:
-        - ./dns:/etc/bind
+        - ./dns/as12-dns:/etc/bind
       exec:
         - sh -lc 'if command -v apk >/dev/null 2>&1; then apk add --no-cache tcpdump; else apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends tcpdump && rm -rf /var/lib/apt/lists/*; fi'
         - sh -lc 'printf "nameserver 120.0.36.1\n" > /etc/resolv.conf'
@@ -392,18 +363,13 @@ topology:
         - ip addr add 120.0.36.1/31 dev eth1
         - ip route replace default via 120.0.36.0
 
-    # ---[ROOT DNS]--------------------------------------------------------------
-    # Lab "root" nameserver — authoritative for `.`, delegates each AS's zone
-    # to that AS's own resolver. Shared sync point so every AS DNS can come up
-    # independently and still resolve its peers via iterative resolution.
-    # Reachable today through OSPF on P2.
     dns-root:
       kind: linux
       image: internetsystemsconsortium/bind9:9.21
       mgmt-ipv4: 172.20.20.40
       group: services
       binds:
-        - ./dns/root:/etc/bind
+        - ./dns/root-dns:/etc/bind
       exec:
         - sh -lc 'if command -v apk >/dev/null 2>&1; then apk add --no-cache tcpdump; else apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends tcpdump && rm -rf /var/lib/apt/lists/*; fi'
         - ip link set eth1 up
@@ -417,7 +383,7 @@ topology:
       cap-add:
         - NET_ADMIN
       binds:
-        - ./dhcp:/opt/dhcp:ro
+        - ./dhcp/as12-dhcp:/opt/dhcp:ro
       cmd: /bin/sh -lc "apk add --no-cache tcpdump >/dev/null 2>&1 || true; sleep 1; for i in {1..30}; do ip link set eth1 up 2>/dev/null && break; sleep 0.5; done; ip addr add 120.0.36.3/31 dev eth1 2>/dev/null || true; ip route add 120.0.32.0/20 via 120.0.36.2 dev eth1 2>/dev/null || true; mkdir -p /etc/dnsmasq.d; cp /opt/dhcp/dnsmasq.conf /etc/dnsmasq.d/enterprise-dhcp.conf; dnsmasq --no-daemon --bind-dynamic --conf-file=/etc/dnsmasq.d/enterprise-dhcp.conf"
 
     NOMAD-CLIENT:
@@ -433,9 +399,7 @@ topology:
         - udhcpc -i eth1 -q -s /opt/udhcpc-resolvconf.sh
 
     # ---[RADIUS]----------------------------------------------------------------
-    # Minimal FreeRADIUS server in the CRISP private services VLAN (120.0.41.0/24, RADIUS = .11).
-    # Two test users (alice/bob) live in ./radius/authorize; NAS clients and the
-    # shared secret are in ./radius/clients.conf. Listens on UDP 1812/1813.
+
     radius:
       kind: linux
       image: freeradius/freeradius-server:latest
@@ -444,9 +408,6 @@ topology:
       binds:
         - ./radius/clients.conf:/etc/raddb/clients.conf:ro
         - ./radius/authorize:/etc/raddb/mods-config/files/authorize:ro
-      # The base image lacks iproute2 and the mgmt network may not be ready the
-      # instant exec fires, so retry the install until `ip` exists, then bring
-      # up the data-plane interface and point the default route at the CRISP SVC VLAN.
       exec:
         - sh -lc 'for i in $(seq 1 30); do command -v ip >/dev/null 2>&1 && command -v tcpdump >/dev/null 2>&1 && break; apt-get update >/dev/null 2>&1 && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends iproute2 tcpdump >/dev/null 2>&1; sleep 2; done; ip link set eth1 up; ip addr add 120.0.41.11/24 dev eth1 2>/dev/null || true; ip route replace default via 120.0.41.1'
 
@@ -474,10 +435,7 @@ topology:
         - udhcpc -i eth1 -q -s /opt/udhcpc-resolvconf.sh
 
     # ---[OpenVPN]---------------------------------------------------------------
-    # Pre-configured CPE: shipped to the nomad user, plugged into their home CE.
-    # Single uplink (eth1) on net-home; default goes through home-ce, which
-    # NATs out toward the residential access bridge net-nomad. Dials the CRISP DMZ IP (120.0.40.2) over UDP/1194,
-    # reached via the AS IGP (no public-IP middleman).
+
     ovpn-nomad:
       kind: linux
       mgmt-ipv4: 172.20.20.41
@@ -497,12 +455,6 @@ topology:
         - sysctl -w net.ipv4.ip_forward=1
         - openvpn --config /etc/openvpn/ovpn.conf --daemon
 
-    # CRISP OpenVPN concentrator: single-homed in the DMZ. Runs TWO static-key
-    # listeners that share the 120.0.40.2 DMZ IP:
-    #   :1194 (tun0) -> nomad CPE       inner 10.255.255.0/30
-    #   :1195 (tun1) -> remote branch   inner 10.255.255.4/30 (physical router)
-    #   eth1 -> net-crisp-dmz (120.0.40.2/24)
-    # Reached from outside via the AS IGP / eBGP interconnect (no dedicated public IP).
     ovpn-site:
       kind: linux
       mgmt-ipv4: 172.20.20.42
@@ -530,11 +482,9 @@ topology:
       cap-add:
         - NET_ADMIN
       binds:
-        - ./crisp/dnsmasq.conf:/opt/dhcp/dnsmasq.conf:ro
+        - ./dhcp/crisp-dhcp/dnsmasq.conf:/opt/dhcp/dnsmasq.conf:ro
       cmd: /bin/sh -lc "apk add --no-cache tcpdump >/dev/null 2>&1 || true; sleep 1; for i in {1..30}; do ip link set eth1 up 2>/dev/null && break; sleep 0.5; done; ip addr add 120.0.41.10/24 dev eth1 2>/dev/null || true; ip route add 10.12.30.0/24 via 120.0.41.1 dev eth1 2>/dev/null || true; mkdir -p /etc/dnsmasq.d; cp /opt/dhcp/dnsmasq.conf /etc/dnsmasq.d/crisp-dhcp.conf; dnsmasq --no-daemon --bind-dynamic --conf-file=/etc/dnsmasq.d/crisp-dhcp.conf"
 
-    # Home CE router: simulates a consumer Internet box. NATs the home LAN
-    # (192.168.1.0/24) out to the residential access segment on net-nomad.
     home-ce:
       kind: linux
       mgmt-ipv4: 172.20.20.43
@@ -602,6 +552,7 @@ topology:
 
 
     # ===[WEB]================================================================
+
     # ----------------------------------------------------- Reverse proxy
     reverse-proxy:
       kind: linux
@@ -634,9 +585,6 @@ topology:
 
     # ===[HOSTS]==============================================================
 
-    # Host/service bridges
-    net-isp:
-      kind: bridge      # "public Internet" — 203.0.113.0/24
     dns-net:
       kind: bridge      # DNS link on P1 — 120.0.36.0/31
     dhcp-net:
@@ -662,17 +610,17 @@ topology:
 
   links:
     # IGP Full Mesh Core
-    - endpoints: ["P1:e1-1", "P2:e1-1"]   # 120.0.33.0/31
-    - endpoints: ["P1:e1-2", "P3:e1-1"]   # 120.0.33.2/31
-    - endpoints: ["P1:e1-3", "P4:eth1"]   # 120.0.33.4/31
-    - endpoints: ["P2:e1-2", "P3:e1-2"]   # 120.0.33.6/31
-    - endpoints: ["P2:e1-3", "P4:eth2"]   # 120.0.33.8/31
-    - endpoints: ["P3:e1-3", "P4:eth3"]   # 120.0.33.10/31
+    - endpoints: ["P1:e1-1", "P2:e1-1"]
+    - endpoints: ["P1:e1-2", "P3:e1-1"]
+    - endpoints: ["P1:e1-3", "P4:eth1"]
+    - endpoints: ["P2:e1-2", "P3:e1-2"]
+    - endpoints: ["P2:e1-3", "P4:eth2"]
+    - endpoints: ["P3:e1-3", "P4:eth3"]
 
     # PE uplinks
-    - endpoints: ["P2:e1-10", "PE-nomad:e1-1"]  # 120.0.34.2/31
-    - endpoints: ["P3:e1-10", "PE-site:e1-1"]   # 120.0.34.4/31
-    - endpoints: ["radius:eth1", "net-crisp-srv:radius-port"]     # 120.0.41.11/24
+    - endpoints: ["P2:e1-10", "PE-nomad:e1-1"]
+    - endpoints: ["P3:e1-10", "PE-site:e1-1"]
+    - endpoints: ["radius:eth1", "net-crisp-srv:radius-port"]
 
     # P1 service links
     - endpoints: ["P1:e1-9", "dns-net:p1-dns-port"]
@@ -691,30 +639,29 @@ topology:
     - endpoints: ["CRISP:e1-3", "net-crisp-srv:crisp-srv-port"]
     - endpoints: ["CRISP:e1-4", "net-crisp-cli:crisp-client-port"]
     - endpoints: ["CRISP-CLIENT:eth1", "net-crisp-cli:crisp-client-host-port"]
-    - endpoints: ["PE-nomad:e1-3", "br-vlan121:pe-nomad-vlan121"] # VLAN 121
-    - endpoints: ["PE-nomad:e1-4", "net-nomad:pe-nomad-netnomad"] # 120.0.38.1/24
+    - endpoints: ["PE-nomad:e1-3", "br-vlan121:pe-nomad-vlan121"]
+    - endpoints: ["PE-nomad:e1-4", "net-nomad:pe-nomad-netnomad"]
     - endpoints: ["NOMAD-CLIENT:eth1", "net-nomad:nomad-client-port"]
-    - endpoints: ["br-vlan121:vlan121-to-netnomad", "net-nomad:netnomad-to-vlan121"] # extend VLAN 121 into 120.0.38.0/24
+    - endpoints: ["br-vlan121:vlan121-to-netnomad", "net-nomad:netnomad-to-vlan121"]
 
     # PE southbound to host bridges
-    - endpoints: ["PE-site:e1-2",  "net-site:pe-site-port"]  # 120.0.37.1/24 (enterprise client LAN)
-    - endpoints: ["PE-site:e1-5",  "br-vlan122:pe-site-vlan122"] # VLAN 122, 120.0.41.1/24
-    - endpoints: ["PE-site:e1-4",  "CRISP:e1-1"]  # 120.0.39.0/31 (PE-site <-> CRISP transit)
+    - endpoints: ["PE-site:e1-2",  "net-site:pe-site-port"]
+    - endpoints: ["PE-site:e1-5",  "br-vlan122:pe-site-vlan122"]
+    - endpoints: ["PE-site:e1-4",  "CRISP:e1-1"]
 
     # Root DNS on P2
-    - endpoints: ["P2:e1-11", "dns-root:eth1"]  # 120.0.36.4/31
+    - endpoints: ["P2:e1-11", "dns-root:eth1"]
 
     # Home CE WAN attached to the residential aggregation (PE-nomad)
-    - endpoints: ["home-ce:eth1",    "net-nomad:home-ce-wan"]      # DHCP WAN via PE-nomad (120.0.38.0/24)
-    - endpoints: ["home-ce:eth2",    "net-home:home-ce-lan"]      # 192.168.1.1/24
+    - endpoints: ["home-ce:eth1",    "net-nomad:home-ce-wan"]
+    - endpoints: ["home-ce:eth2",    "net-home:home-ce-lan"]
 
     # Nomad CPE plugs into the home LAN
-    - endpoints: ["ovpn-nomad:eth1", "net-home:ovpn-nomad-port"]  # 192.168.1.10/24
+    - endpoints: ["ovpn-nomad:eth1", "net-home:ovpn-nomad-port"]
 
     # VoIP
-    - endpoints: ["phone-crisp1:eth1",  "net-crisp-cli:phone-crisp1-port"]   # 10.12.30.101/24
-    - endpoints: ["phone-crisp2:eth1", "net-crisp-cli:phone-crisp2-port"]   # 10.12.30.102/24
+    - endpoints: ["phone-crisp1:eth1",  "net-crisp-cli:phone-crisp1-port"]
+    - endpoints: ["phone-crisp2:eth1", "net-crisp-cli:phone-crisp2-port"]
 
     # Physical breakout trunk for P4 BGP interconnect VLANs 1012/1213
     - endpoints: ["P4:eth4", "breakout-trunk:p4-trunk"]
-  # end

@@ -2,43 +2,23 @@
 
 SIP call flow with one Asterisk PBX (server) and 2 softphones (clients).
 
+SIP does the call setup with REGISTER, INVITE, and 200 OK, then RTP carries the audio while Asterisk stays in the middle.
+
 ## Concepts
 
-### PBX — Private Branch Exchange
+### PBX - Private Branch Exchange
 
-A PBX is a private telephone switch that manages internal extensions and routes calls between them (and optionally to external networks). It acts as a call controller: it knows which extension maps to which endpoint, enforces the dial plan, and handles call state (setup, ringing, connected, teardown).
+A PBX routes calls between extensions and enforces the dial plan; we use Asterisk (software PBX) configured via `sip.conf` and `extensions.conf`.
 
-**Asterisk** is an open-source software PBX. It runs as a daemon, speaks SIP (and other protocols), and is configured through two key files:
+### SIP - Session Initiation Protocol
 
-| File | Role |
-|---|---|
-| `sip.conf` | Declares SIP peers/users — credentials, codec list, host binding |
-| `extensions.conf` | Dial plan — maps dialled numbers to actions (`Dial()`, `Voicemail()`, etc.) |
+SIP handles call signalling (REGISTER, INVITE, 200 OK) over UDP/5060; RTP carries the audio on ephemeral UDP ports.
 
-Asterisk needs no physical hardware — it is purely software, which makes it well-suited for containerised deployments.
+### Call flow
 
-### SIP — Session Initiation Protocol
-
-SIP is the **signalling** protocol: it sets up, modifies, and tears down calls, but carries no audio itself. It is text-based (like HTTP), runs over UDP/5060 by default, and follows a request/response model.
-
-A SIP endpoint (softphone, IP phone) must first **register** with the PBX so the server knows where to route inbound calls:
-
-```
-Client ──REGISTER──▶ PBX   (announces "I am ext. 1001 at this IP:port")
-PBX    ──200 OK────▶ Client
-```
-
-### Call flow: Client → Softphone → PBX → Client
-
-A complete call between ext. 1001 and ext. 1002 goes through two layers — **SIP signalling** and **RTP media** — and Asterisk sits in the middle of both:
+Typical flow: REGISTER -> INVITE -> 200 OK -> ACK, then RTP media (audio).
 
 ![sip call flow example](resources/sip_call_flow.jpg)
-
-**SIP (signalling)** — port 5060/UDP: controls call lifecycle. `INVITE` carries an SDP offer listing the caller's IP, RTP port, and supported codecs. The `200 OK` answer carries the callee's SDP. After `ACK` the media path is negotiated.
-
-**RTP (media)** — ephemeral UDP ports: carries the actual audio samples, encoded with the negotiated codec, (in our case, we chose `PCMU` = G.711 µ-law). Asterisk bridges the two RTP streams.
-
-A **softphone** (here `baresip`) is the client-side software that implements both roles: it speaks SIP to register and drive call state, and opens an RTP socket to send/receive encoded audio.
 
 ## Architecture
 
@@ -49,9 +29,9 @@ voip/
   Makefile                    Build all Docker images; attach to phone consoles.
   asterisk/
     Dockerfile                Builds the Asterisk PBX image (asterisk + config).
-    sip.conf                  SIP peer definitions — ext. 1001, 1002 (topology phones)
+    sip.conf                  SIP peer definitions - ext. 1001, 1002 (topology phones)
                               and 1003 (external client), dynamic host, ulaw/alaw codecs.
-    extensions.conf           Dial plan — Dial(SIP/100x, 30s) for each extension.
+    extensions.conf           Dial plan - Dial(SIP/100x, 30s) for each extension.
   client/
     Dockerfile                Builds the baresip softphone image (topology phones).
     entrypoint.sh             Auto-configures baresip at startup: reads SIP_USER /
@@ -65,9 +45,6 @@ voip/
 ```
 
 ### Network topology
-
-Outdated:
-![architecture PBX softphones](resources/archi.png)
 
 The PBX runs in the CRISP SVC VLAN (`120.0.41.5/24`). Both phones sit in the CRISP LAN (`10.12.30.0/24`) and reach the PBX through the CRISP router.
 
@@ -152,12 +129,9 @@ audio rx pipeline:      (play) <--- PCMU
 call: got re-INVITE (SDP Offer)
 stream: update 'audio'
 ua: using best effort AF: af=AF_INET
-/hangup5] audio=0/0 (bit/s)    
-call: terminate call '408347f913a34eaa' with sip:1002@voip.corentinpradier.com;transport=udp
-sip:1001@voip.corentinpradier.com: Call with sip:1002@voip.corentinpradier.com;transport=udp terminated (duration: 5 secs)
-read escape sequence
-make: *** [Makefile:6: phone-crisp1] Error 1
-t70n@t70n-workstation:~/Documents/crisp/voip$ 
+/hangup7] audio=0/0 (bit/s)    
+call: terminate call 'c512b03fbd3e5653' with sip:1002@voip.corentinpradier.com;transport=udp
+sip:1001@voip.corentinpradier.com: Call with sip:1002@voip.corentinpradier.com;transport=udp terminated (duration: 7 secs)
 ```
 
 * Phone2: 
@@ -183,10 +157,7 @@ ua: using best effort AF: af=AF_INET
 call: got re-INVITE (SDP Offer)
 stream: update 'audio'
 sip:1001@120.0.41.5: session closed: Connection reset by peer
-sip:1002-0x5629afb1fcf0@10.12.30.102:5060: Call with sip:1001@120.0.41.5 terminated (duration: 5 secs)
-read escape sequence
-make: *** [Makefile:9: phone-crisp2] Error 1
-t70n@t70n-workstation:~/Documents/crisp/voip$ 
+sip:1002-0x5658f89becf0@10.12.30.102:5060: Call with sip:1001@120.0.41.5 terminated (duration: 7 secs)
 ```
 
 ## External client (ext. 1003)
@@ -221,8 +192,22 @@ docker attach phone-external
 ```
 
 ```text
-/reginfo       — check registration status
-/dial 1001     — call phone-crisp1
-/dial 1002     — call phone-crisp2
-/hangup        — end the current call
+/reginfo       - check registration status
+/dial 1001     - call phone-crisp1
+/dial 1002     - call phone-crisp2
+/hangup        - end the current call
+```
+
+## Packet capture
+
+Run the capture before you place the call:
+
+```bash
+sudo tcpdump -ni net-crisp-srv -s 0 -w rsc/wireshark/voip/voip-call.pcap 'udp port 5060 or udp portrange 10000-20000'
+```
+
+If you want the phone side too, capture on the client net at the same time:
+
+```bash
+sudo tcpdump -ni net-crisp-cli -s 0 -w rsc/wireshark/voip/voip-client-call.pcap 'udp port 5060 or udp portrange 10000-20000'
 ```

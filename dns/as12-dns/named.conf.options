@@ -13,9 +13,4 @@ options {
   allow-recursion { trusted; };
   allow-query { any; };
   dnssec-validation no;
-  // No global forwarders. We iterate from the lab root (see root.hints +
-  // `zone "."` hint in views.conf) so we never depend on any single peer
-  // AS DNS being up. To add public-Internet resolution later, declare a
-  // per-zone forward (e.g. `zone "com" { type forward; ... };`) instead
-  // of a global forwarder — keeping the lab zones on the iterative path.
 };
