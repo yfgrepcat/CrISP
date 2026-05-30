@@ -14,4 +14,6 @@ services:
     #
     # Alternatively override SIP_SERVER with the PBX IP directly:
     #   SIP_SERVER: "120.0.41.5"
+    stdin_open: true
+    tty: true
     restart: unless-stopped

@@ -6,7 +6,7 @@ RUN apt-get update && \
     apt-get install -y --no-install-recommends software-properties-common && \
     add-apt-repository universe && \
     apt-get update && \
-    apt-get install -y --no-install-recommends asterisk iproute2 iputils-ping && \
+    apt-get install -y --no-install-recommends asterisk iproute2 iputils-ping tcpdump && \
     rm -rf /var/lib/apt/lists/*
 
 EXPOSE 5060/udp

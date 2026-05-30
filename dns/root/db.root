@@ -10,7 +10,7 @@
 
 $TTL 86400
 @   IN SOA  root-srv.lab. admin.lab. (
-            2026052800   ; serial (YYYYMMDDnn) — bump on every edit
+            2026052901   ; serial (YYYYMMDDnn) — bump on every edit
             7200         ; refresh
             1800         ; retry
             604800       ; expire
@@ -18,7 +18,7 @@ $TTL 86400
 
 ; --- Root nameserver -------------------------------------------------------
 @           IN NS    root-srv.lab.
-root-srv.lab.   IN A     120.0.34.14
+root-srv.lab.   IN A     120.0.36.5
 
 ; --- AS12 (us — corentinpradier.com) --------------------------------------
 corentinpradier.com.    IN NS    ns.corentinpradier.com.
@@ -31,9 +31,9 @@ n7.             IN NS    ns.n7.
 ns.n7.          IN A     120.0.30.1
 
 ; --- AS13 (group 3) -------------------------------------------------------
-; Known DNS IP: 120.0.48.34 (zone name TBC). Template:
-;   <as13-zone>.    IN NS    ns.<as13-zone>.
-;   ns.<as13-zone>. IN A     120.0.48.34
+; Known DNS IP: 120.0.48.34.
+lafassonnade.lan.       IN NS    dns-as.lafassonnade.lan.
+dns-as.lafassonnade.lan. IN A     120.0.48.34
 
 ; --- AS14 (group 4) -------------------------------------------------------
 ; TODO add when group 4 publishes their zone + DNS IP. Template:

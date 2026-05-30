@@ -17,6 +17,8 @@ server {
 
     allow ${VPN_CLIENT_NETWORK};
     allow ${CRISP_CLIENT_NETWORK};
+    allow 120.0.48.6;
+    allow 10.255.255.5;
     allow 10.255.255.0/30;
     deny all;
     

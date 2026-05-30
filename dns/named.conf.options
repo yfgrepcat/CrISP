@@ -1,5 +1,5 @@
 acl "vpn-users" { 192.168.1.0/24; 10.255.255.0/30; };
-acl "crisp-employees" { 10.12.30.0/24; vpn-users; };
+acl "crisp-employees" { 10.12.30.0/24; 120.0.48.6/32; vpn-users; };
 acl "enterprise-nets" { crisp-employees; };
 acl "crisp-nets" { 120.0.40.0/24; 120.0.41.0/24; };
 acl "residential-nets" { 120.0.38.0/24; };
