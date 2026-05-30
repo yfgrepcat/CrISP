@@ -642,7 +642,6 @@ topology:
     - endpoints: ["PE-nomad:e1-3", "br-vlan121:pe-nomad-vlan121"]
     - endpoints: ["PE-nomad:e1-4", "net-nomad:pe-nomad-netnomad"]
     - endpoints: ["NOMAD-CLIENT:eth1", "net-nomad:nomad-client-port"]
-    - endpoints: ["br-vlan121:vlan121-to-netnomad", "net-nomad:netnomad-to-vlan121"]
 
     # PE southbound to host bridges
     - endpoints: ["PE-site:e1-2",  "net-site:pe-site-port"]
